@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .tab-row{ display:flex; gap:0; margin-bottom:2rem; border:1px solid var(--hairline); }
+  .tab-row button{
+    flex:1; border:none; padding:0.7rem; background:var(--bg-raised);
+    font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--parchment-dim); cursor:pointer;
+  }
+  .tab-row button.active{ background:var(--amber-dim); color:var(--bg); }
+</style>
+</head>
+<body>
+<div class="center-wrap">
+
+  <div class="card" id="authCard">
+    <h1><span class="shard"></span>Character Vault</h1>
+    <div class="sub" id="cardSub">New account? You need a signup code to get in.</div>
+
+    <div class="tab-row">
+      <button class="active" id="tabSignup">Sign Up</button>
+      <button id="tabLogin">Log In</button>
+    </div>
+
+    <div id="signupFields">
+      <div class="field">
+        <label for="signupCode">Signup code</label>
+        <input id="signupCode" type="text" placeholder="What is the music of life?">
+      </div>
+      <div class="field">
+        <label for="displayName">Your name</label>
+        <input id="displayName" type="text" placeholder="This is also your login">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" placeholder="At least 6 characters">
+      </div>
+      <button class="primary" id="signupBtn">Create account</button>
+    </div>
+
+    <div id="loginFields" style="display:none;">
+      <div class="field">
+        <label for="loginName">Name</label>
+        <input id="loginName" type="text">
+      </div>
+      <div class="field">
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password">
+      </div>
+      <button class="primary" id="loginBtn">Sign in</button>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+$('tabSignup').addEventListener('click', () => setTab('signup'));
+$('tabLogin').addEventListener('click', () => setTab('login'));
+
+function setTab(which){
+  const isSignup = which === 'signup';
+  $('tabSignup').classList.toggle('active', isSignup);
+  $('tabLogin').classList.toggle('active', !isSignup);
+  $('signupFields').style.display = isSignup ? 'block' : 'none';
+  $('loginFields').style.display = isSignup ? 'none' : 'block';
+  $('cardSub').textContent = isSignup
+    ? "New account? You need a signup code to get in."
+    : 'Welcome back — sign in with your name and password.';
+  $('errorMsg').textContent = '';
+}
+
+$('signupBtn').addEventListener('click', async () => {
+  $('errorMsg').textContent = '';
+  const signupCode = $('signupCode').value.trim();
+  const displayName = $('displayName').value.trim();
+  const password = $('password').value;
+  if(!signupCode){ $('errorMsg').textContent = 'Enter your signup code.'; return; }
+  if(!displayName){ $('errorMsg').textContent = 'Choose a display name.'; return; }
+  if(password.length < 6){ $('errorMsg').textContent = 'Password must be at least 6 characters.'; return; }
+  const res = await fetch('/api/signup', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ signupCode, displayName, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ $('errorMsg').textContent = data.error || 'Something went wrong.'; return; }
+  window.location.href = '/vault.html';
+});
+
+$('loginBtn').addEventListener('click', async () => {
+  $('errorMsg').textContent = '';
+  const displayName = $('loginName').value.trim();
+  const password = $('loginPassword').value;
+  if(!displayName || !password){ $('errorMsg').textContent = 'Enter your name and password.'; return; }
+  const res = await fetch('/api/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ displayName, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ $('errorMsg').textContent = data.error || 'Something went wrong.'; return; }
+  window.location.href = '/vault.html';
+});
+
+fetch('/api/me').then(r => { if(r.ok) window.location.href = '/vault.html'; });
+</script>
+</body>
+</html>

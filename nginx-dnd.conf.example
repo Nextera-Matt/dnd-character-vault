@@ -1,0 +1,32 @@
+# Drop this in /etc/nginx/conf.d/dnd.matthodges.uk.conf once DNS is pointed.
+# Run certbot for this subdomain first — it'll rewrite the ssl_certificate lines below.
+
+server {
+    server_name dnd.matthodges.uk;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    listen 443 ssl; # managed by Certbot
+    # ssl_certificate /etc/letsencrypt/live/dnd.matthodges.uk/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/dnd.matthodges.uk/privkey.pem;
+}
+
+server {
+    if ($host = dnd.matthodges.uk) {
+        return 301 https://$host$request_uri;
+    }
+    listen 80;
+    server_name dnd.matthodges.uk;
+    return 404;
+}

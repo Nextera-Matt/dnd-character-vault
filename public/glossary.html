@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rules Glossary — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  main{ max-width:760px; margin:0 auto; padding:2rem 1.5rem 4rem; }
+  .search-box{ width:100%; background:var(--bg-raised); border:1px solid var(--hairline); padding:0.8rem 1rem; font-size:1rem; margin-bottom:2rem; }
+  .cat-label{ font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--amber-dim); margin:2rem 0 1rem; }
+  .entry{ margin-bottom:1rem; padding-left:1rem; border-left:2px solid var(--violet); }
+  .entry .term{ font-family:'Cinzel', serif; font-size:1rem; color:var(--amber); }
+  .entry .sub{ font-family:'JetBrains Mono', monospace; font-size:0.68rem; color:var(--violet); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.2rem; }
+  .entry p{ margin:0.3rem 0 0; font-size:0.95rem; color:var(--parchment-dim); }
+  .no-results{ text-align:center; color:var(--parchment-dim); font-style:italic; padding:3rem 0; display:none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Character Vault</div>
+  <div class="right"><a href="/vault.html" class="btn">My Vault</a></div>
+</div>
+
+<main>
+  <h1 style="text-align:center; margin-bottom:1.5rem;">Rules Glossary</h1>
+  <input class="search-box" id="search" type="text" placeholder="Search skills, abilities, conditions…">
+  <div class="no-results" id="noResults">Nothing matches that.</div>
+  <div id="results"></div>
+</main>
+
+<script>
+const DATA = [
+  { term: "Strength", cat: "Ability", desc: "Physical power — melee attacks, carrying capacity, and Athletics checks." },
+  { term: "Dexterity", cat: "Ability", desc: "Agility and reflexes — AC, initiative, ranged attacks, and Acrobatics/Stealth/Sleight of Hand." },
+  { term: "Constitution", cat: "Ability", desc: "Health and stamina — hit points and Concentration saves." },
+  { term: "Intelligence", cat: "Ability", desc: "Reasoning and memory — Arcana/History/Investigation/Nature/Religion, and wizard spellcasting." },
+  { term: "Wisdom", cat: "Ability", desc: "Perception and insight — Animal Handling/Insight/Medicine/Perception/Survival, and cleric/druid spellcasting." },
+  { term: "Charisma", cat: "Ability", desc: "Force of personality — Deception/Intimidation/Performance/Persuasion, and bard/sorcerer/warlock spellcasting." },
+
+  { term: "Acrobatics", cat: "Skill (Dex)", desc: "Staying on your feet in tricky situations — tumbling, balancing, escaping a grapple." },
+  { term: "Animal Handling", cat: "Skill (Wis)", desc: "Calming, controlling, or reading the intentions of an animal." },
+  { term: "Arcana", cat: "Skill (Int)", desc: "Recalling lore about spells, magic items, planes, and magical traditions." },
+  { term: "Athletics", cat: "Skill (Str)", desc: "Climbing, jumping, swimming, and grappling." },
+  { term: "Deception", cat: "Skill (Cha)", desc: "Convincingly hiding the truth, verbally or through disguise." },
+  { term: "History", cat: "Skill (Int)", desc: "Recalling lore about historical events, people, and civilizations." },
+  { term: "Insight", cat: "Skill (Wis)", desc: "Reading true intentions — spotting a lie, a bluff, or hidden motive." },
+  { term: "Intimidation", cat: "Skill (Cha)", desc: "Influencing someone through threats, hostile actions, or physical presence." },
+  { term: "Investigation", cat: "Skill (Int)", desc: "Deducing details from clues — finding a hidden object, spotting how a trap works." },
+  { term: "Medicine", cat: "Skill (Wis)", desc: "Diagnosing illness, stabilizing the dying, identifying cause of death." },
+  { term: "Nature", cat: "Skill (Int)", desc: "Recalling lore about terrain, plants, animals, and weather." },
+  { term: "Perception", cat: "Skill (Wis)", desc: "Spotting, hearing, or otherwise noticing something." },
+  { term: "Performance", cat: "Skill (Cha)", desc: "Delighting an audience with music, dance, acting, or storytelling." },
+  { term: "Persuasion", cat: "Skill (Cha)", desc: "Influencing someone with tact, social graces, or good arguments." },
+  { term: "Religion", cat: "Skill (Int)", desc: "Recalling lore about deities, rites, prayers, and religious hierarchies." },
+  { term: "Sleight of Hand", cat: "Skill (Dex)", desc: "Manual trickery — palming an object, picking a pocket, planting something unnoticed." },
+  { term: "Stealth", cat: "Skill (Dex)", desc: "Concealing yourself from enemies, slipping past guards, sneaking up on someone." },
+  { term: "Survival", cat: "Skill (Wis)", desc: "Tracking, foraging, navigating the wilds, predicting weather." },
+
+  { term: "Blinded", cat: "Condition", desc: "Can't see; automatically fails checks needing sight. Attacks against you have advantage; your attacks have disadvantage." },
+  { term: "Charmed", cat: "Condition", desc: "Can't attack the charmer or target them with harmful abilities. The charmer has advantage on social checks against you." },
+  { term: "Deafened", cat: "Condition", desc: "Can't hear; automatically fails checks needing hearing." },
+  { term: "Frightened", cat: "Condition", desc: "Disadvantage on checks and attacks while the source of fear is in sight; can't willingly move closer to it." },
+  { term: "Grappled", cat: "Condition", desc: "Speed becomes 0. Ends if the grappler is incapacitated or you're moved out of the grappler's reach." },
+  { term: "Incapacitated", cat: "Condition", desc: "Can't take actions or reactions." },
+  { term: "Invisible", cat: "Condition", desc: "Can't be seen without magic. Counts as heavily obscured. Attacks against you have disadvantage; your attacks have advantage." },
+  { term: "Paralyzed", cat: "Condition", desc: "Incapacitated, can't move or speak. Auto-fails Str/Dex saves. Attacks have advantage, and hits within 5ft are automatic crits." },
+  { term: "Petrified", cat: "Condition", desc: "Transformed to stone, incapacitated, unaware. Resistant to all damage; immune to poison and disease." },
+  { term: "Poisoned", cat: "Condition", desc: "Disadvantage on attack rolls and ability checks." },
+  { term: "Prone", cat: "Condition", desc: "Can only crawl unless standing up. Disadvantage on attacks. Melee attacks against you have advantage; ranged attacks against you have disadvantage." },
+  { term: "Restrained", cat: "Condition", desc: "Speed 0, disadvantage on attacks and Dex saves. Attacks against you have advantage; your attacks have disadvantage." },
+  { term: "Stunned", cat: "Condition", desc: "Incapacitated, can't move, can speak only falteringly. Auto-fails Str/Dex saves. Attacks against you have advantage." },
+  { term: "Unconscious", cat: "Condition", desc: "Incapacitated, can't move or speak, unaware of surroundings. Drops what you're holding, falls prone. Auto-fails Str/Dex saves. Attacks have advantage, and hits within 5ft are automatic crits." },
+
+  { term: "Advantage", cat: "Rule", desc: "Roll two d20s, take the higher result." },
+  { term: "Disadvantage", cat: "Rule", desc: "Roll two d20s, take the lower result. Cancels out with Advantage if you have both — roll once normally." },
+  { term: "Passive Perception", cat: "Rule", desc: "10 + your Perception modifier. Used instead of rolling when you're not actively searching." },
+  { term: "Concentration", cat: "Rule", desc: "Some spells require it — taking damage forces a Constitution save (DC 10 or half the damage, whichever is higher) or the spell ends." },
+];
+
+function render(filter){
+  const q = filter.trim().toLowerCase();
+  const matches = q ? DATA.filter(d => d.term.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q)) : DATA;
+
+  const results = document.getElementById('results');
+  results.innerHTML = '';
+  document.getElementById('noResults').style.display = matches.length ? 'none' : 'block';
+
+  const cats = [...new Set(matches.map(d => d.cat.split(' ')[0]))];
+  const order = ['Ability', 'Skill', 'Condition', 'Rule'];
+  order.forEach(catGroup => {
+    const items = matches.filter(d => d.cat.startsWith(catGroup));
+    if(!items.length) return;
+    const label = document.createElement('div');
+    label.className = 'cat-label';
+    label.textContent = catGroup === 'Skill' ? 'Skills' : catGroup === 'Ability' ? 'Abilities' : catGroup === 'Condition' ? 'Conditions' : 'Rules';
+    results.appendChild(label);
+    items.forEach(d => {
+      const div = document.createElement('div');
+      div.className = 'entry';
+      div.innerHTML = `<div class="sub">${d.cat}</div><div class="term">${d.term}</div><p>${d.desc}</p>`;
+      results.appendChild(div);
+    });
+  });
+}
+
+document.getElementById('search').addEventListener('input', e => render(e.target.value));
+render('');
+</script>
+</body>
+</html>

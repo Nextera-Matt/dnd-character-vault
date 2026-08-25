@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Admin — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  main{ max-width:1000px; margin:0 auto; padding:2rem 1.5rem 4rem; }
+  .section-label{ font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--amber-dim); margin:2.5rem 0 1rem; }
+  table{ width:100%; border-collapse:collapse; font-size:0.9rem; }
+  th{ text-align:left; font-family:'Cinzel', serif; font-size:0.68rem; letter-spacing:0.08em; text-transform:uppercase; color:var(--amber-dim); padding:0.5rem 0.6rem; border-bottom:1px solid var(--hairline); }
+  td{ padding:0.5rem 0.6rem; border-bottom:1px dotted var(--hairline); vertical-align:middle; }
+  tr:hover td{ background:rgba(201,151,60,0.04); }
+  .row-actions{ display:flex; gap:0.4rem; flex-wrap:wrap; }
+  .row-actions button{ font-size:0.62rem; padding:0.35rem 0.6rem; }
+  .site-admin-tag{ font-family:'JetBrains Mono', monospace; font-size:0.68rem; color:var(--amber); }
+  .mono-small{ font-family:'JetBrains Mono', monospace; font-size:0.8rem; color:var(--violet); }
+  .empty-row td{ text-align:center; color:var(--parchment-dim); font-style:italic; padding:1.5rem; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Site Admin</div>
+  <div class="right">
+    <a href="/vault.html" class="btn">My Vault</a>
+    <button id="logoutBtn">Sign out</button>
+  </div>
+</div>
+
+<main>
+
+  <div class="section-label">Users</div>
+  <table id="usersTable">
+    <thead><tr><th>Name</th><th>Joined</th><th></th><th>Actions</th></tr></thead>
+    <tbody id="usersBody"></tbody>
+  </table>
+
+  <div class="section-label">Sessions</div>
+  <table id="sessionsTable">
+    <thead><tr><th>Name</th><th>Admin</th><th>Members</th><th>Characters</th><th>Invite Code</th><th>Actions</th></tr></thead>
+    <tbody id="sessionsBody"></tbody>
+  </table>
+
+  <div class="section-label">Characters</div>
+  <table id="charsTable">
+    <thead><tr><th>Name</th><th>Owner</th><th>Session</th><th>Updated</th><th>Actions</th></tr></thead>
+    <tbody id="charsBody"></tbody>
+  </table>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function init(){
+  const me = await fetch('/api/me');
+  if(!me.ok){ window.location.href = '/'; return; }
+  const meData = await me.json();
+  if(!meData.user.isSiteAdmin){
+    document.body.innerHTML = '<div class="empty-msg" style="padding:4rem;">Site admin only. <a href="/vault.html">Back to your Vault</a>.</div>';
+    return;
+  }
+  await load();
+}
+
+async function load(){
+  const res = await fetch('/api/admin/overview');
+  const data = await res.json();
+  renderUsers(data.users, data.siteAdminId);
+  renderSessions(data.sessions);
+  renderChars(data.characters);
+}
+
+function renderUsers(users, siteAdminId){
+  const body = $('usersBody');
+  body.innerHTML = '';
+  if(!users.length){ body.innerHTML = '<tr class="empty-row"><td colspan="4">No users.</td></tr>'; return; }
+  users.forEach(u => {
+    const tr = document.createElement('tr');
+    const joined = new Date(u.createdAt + 'Z').toLocaleDateString();
+    tr.innerHTML = `
+      <td>${escapeHTML(u.displayName)}</td>
+      <td>${joined}</td>
+      <td>${u.id === siteAdminId ? '<span class="site-admin-tag">SITE ADMIN</span>' : ''}</td>
+      <td class="row-actions">
+        <button class="rename">Rename</button>
+        <button class="reset">Reset Password</button>
+        ${u.id === siteAdminId ? '' : '<button class="danger del">Delete</button>'}
+      </td>
+    `;
+    tr.querySelector('.rename').addEventListener('click', async () => {
+      const name = prompt('New display name for ' + u.displayName + ':', u.displayName);
+      if(!name || name === u.displayName) return;
+      const res = await fetch('/api/admin/users/' + u.id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ displayName: name }) });
+      const d = await res.json();
+      if(!res.ok){ alert(d.error); return; }
+      load();
+    });
+    tr.querySelector('.reset').addEventListener('click', async () => {
+      const pw = prompt('New password for ' + u.displayName + ' (at least 6 characters):');
+      if(!pw) return;
+      const res = await fetch('/api/admin/users/' + u.id + '/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ newPassword: pw }) });
+      const d = await res.json();
+      if(!res.ok){ alert(d.error); return; }
+      alert('Password reset for ' + u.displayName + '.');
+    });
+    const delBtn = tr.querySelector('.del');
+    if(delBtn){
+      delBtn.addEventListener('click', async () => {
+        if(!confirm(`Delete ${u.displayName}'s account entirely? This removes their session memberships and every character they own. Cannot be undone.`)) return;
+        await fetch('/api/admin/users/' + u.id, { method:'DELETE' });
+        load();
+      });
+    }
+    body.appendChild(tr);
+  });
+}
+
+function renderSessions(sessions){
+  const body = $('sessionsBody');
+  body.innerHTML = '';
+  if(!sessions.length){ body.innerHTML = '<tr class="empty-row"><td colspan="6">No sessions.</td></tr>'; return; }
+  sessions.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHTML(s.name)}</td>
+      <td>${escapeHTML(s.adminName || '(none)')}</td>
+      <td>${s.memberCount}</td>
+      <td>${s.characterCount}</td>
+      <td class="mono-small">${escapeHTML(s.inviteCode)}</td>
+      <td class="row-actions"><button class="danger del">Delete</button></td>
+    `;
+    tr.querySelector('.del').addEventListener('click', async () => {
+      if(!confirm(`Delete session "${s.name}" entirely, including every member's characters in it? Cannot be undone.`)) return;
+      await fetch('/api/admin/sessions/' + s.id, { method:'DELETE' });
+      load();
+    });
+    body.appendChild(tr);
+  });
+}
+
+function renderChars(chars){
+  const body = $('charsBody');
+  body.innerHTML = '';
+  if(!chars.length){ body.innerHTML = '<tr class="empty-row"><td colspan="5">No characters.</td></tr>'; return; }
+  chars.forEach(c => {
+    const tr = document.createElement('tr');
+    const updated = new Date(c.updatedAt + 'Z').toLocaleString();
+    tr.innerHTML = `
+      <td>${escapeHTML(c.name)}</td>
+      <td>${escapeHTML(c.ownerName)}</td>
+      <td>${escapeHTML(c.sessionName)}</td>
+      <td>${updated}</td>
+      <td class="row-actions">
+        <button class="open">View</button>
+        <button class="danger del">Delete</button>
+      </td>
+    `;
+    tr.querySelector('.open').addEventListener('click', () => { window.location.href = '/sheet.html?id=' + c.id; });
+    tr.querySelector('.del').addEventListener('click', async () => {
+      if(!confirm(`Delete "${c.name}"? Cannot be undone.`)) return;
+      await fetch('/api/admin/characters/' + c.id, { method:'DELETE' });
+      load();
+    });
+    body.appendChild(tr);
+  });
+}
+
+function escapeHTML(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method:'POST' });
+  window.location.href = '/';
+});
+
+init();
+</script>
+</body>
+</html>

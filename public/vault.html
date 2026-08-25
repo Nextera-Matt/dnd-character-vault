@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Vault — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .section-label{ font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--amber-dim); margin:2.5rem auto 1rem; max-width:760px; padding:0 1.5rem; }
+  .join-row{ max-width:760px; margin:0 auto; padding:0 1.5rem; display:flex; gap:0.6rem; }
+  .join-row input{ flex:1; background:var(--bg-raised); border:1px solid var(--hairline); padding:0.6rem 0.8rem; }
+  .session-card .role{ font-family:'JetBrains Mono', monospace; font-size:0.7rem; color:var(--amber-dim); text-transform:uppercase; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Character Vault</div>
+  <div class="right">
+    <span id="whoami"></span>
+    <a href="/glossary.html" class="btn">Glossary</a>
+    <a href="/admin.html" class="btn" id="adminLink" style="display:none;">Site Admin</a>
+    <button id="logoutBtn">Sign out</button>
+  </div>
+</div>
+
+<div class="section-label">Your sessions</div>
+<div class="empty-msg" id="noSessionsMsg" style="display:none;">You're not in any sessions yet. Ask your DM for their invite code and enter it below, or start your own with "+ New Session".</div>
+<div class="char-grid" id="sessionGrid"></div>
+
+<div class="join-row">
+  <input id="joinCodeInput" type="text" placeholder="Have another invite code? Enter it here">
+  <button id="joinAnotherBtn">Join</button>
+</div>
+<div class="error-msg" id="joinAnotherError" style="max-width:760px;margin:0.5rem auto 0;padding:0 1.5rem;"></div>
+
+<div class="section-label">My characters (across all sessions)</div>
+<div class="char-grid" id="charGrid"></div>
+<div class="empty-msg" id="emptyMsg" style="display:none;">No characters yet — open a session above to start one.</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function init(){
+  const me = await fetch('/api/me');
+  if(!me.ok){ window.location.href = '/'; return; }
+  const meData = await me.json();
+  $('whoami').textContent = meData.user.displayName;
+  if(meData.user.isSiteAdmin){ $('adminLink').style.display = 'inline-block'; }
+
+  const [sessRes, vaultRes] = await Promise.all([
+    fetch('/api/sessions'),
+    fetch('/api/vault'),
+  ]);
+  const { sessions } = await sessRes.json();
+  const { characters } = await vaultRes.json();
+  renderSessions(sessions);
+  renderCharacters(characters);
+}
+
+function renderSessions(sessions){
+  $('noSessionsMsg').style.display = sessions.length ? 'none' : 'block';
+  const grid = $('sessionGrid');
+  grid.innerHTML = '';
+  sessions.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'char-card session-card';
+    card.innerHTML = `
+      <h3>${escapeHTML(s.name)}</h3>
+      <div class="role">${s.isAdmin ? 'Admin' : 'Player'}</div>
+      <div class="updated">${s.memberCount} member${s.memberCount===1?'':'s'} · ${s.characterCount} character${s.characterCount===1?'':'s'}</div>
+      <div class="actions"><button class="open">Open</button></div>
+    `;
+    card.querySelector('.open').addEventListener('click', () => {
+      window.location.href = '/session.html?id=' + s.id;
+    });
+    grid.appendChild(card);
+  });
+
+  const newCard = document.createElement('div');
+  newCard.className = 'char-card new-char-card';
+  newCard.textContent = '+ New Session';
+  newCard.addEventListener('click', async () => {
+    const name = prompt('Name this session (e.g. "Curse of Strahd — Tuesdays"):');
+    if(!name) return;
+    const res = await fetch('/api/sessions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+    const data = await res.json();
+    alert(`Session created. Invite code: ${data.inviteCode}\n\nShare this with your players.`);
+    window.location.href = '/session.html?id=' + data.id;
+  });
+  grid.appendChild(newCard);
+}
+
+function renderCharacters(characters){
+  const grid = $('charGrid');
+  grid.innerHTML = '';
+  $('emptyMsg').style.display = characters.length ? 'none' : 'block';
+  characters.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'char-card';
+    const updated = new Date(c.updatedAt + 'Z').toLocaleString();
+    card.innerHTML = `
+      <h3>${escapeHTML(c.name)}</h3>
+      <div class="role">${escapeHTML(c.sessionName)}</div>
+      <div class="updated">Updated ${updated}</div>
+      <div class="actions">
+        <button class="open">Open</button>
+        <button class="danger del">Delete</button>
+      </div>
+    `;
+    card.querySelector('.open').addEventListener('click', () => {
+      window.location.href = '/sheet.html?id=' + c.id;
+    });
+    card.querySelector('.del').addEventListener('click', async () => {
+      if(!confirm(`Delete "${c.name}" from ${c.sessionName}? This cannot be undone.`)) return;
+      await fetch('/api/characters/' + c.id, { method:'DELETE' });
+      init();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function escapeHTML(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+$('joinAnotherBtn').addEventListener('click', async () => {
+  $('joinAnotherError').textContent = '';
+  const inviteCode = $('joinCodeInput').value.trim();
+  if(!inviteCode) return;
+  const res = await fetch('/api/join-session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ inviteCode }) });
+  const data = await res.json();
+  if(!res.ok){ $('joinAnotherError').textContent = data.error || 'Something went wrong.'; return; }
+  window.location.href = '/session.html?id=' + data.session.id;
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method:'POST' });
+  window.location.href = '/';
+});
+
+init();
+</script>
+</body>
+</html>

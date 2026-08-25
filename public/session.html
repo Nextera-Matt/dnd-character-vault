@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .hero{ max-width:760px; margin:0 auto; padding:2.5rem 1.5rem 0; text-align:center; }
+  .hero h1{ font-size:1.9rem; }
+  .owner-tag{ font-family:'JetBrains Mono', monospace; font-size:0.7rem; color:var(--violet); margin-top:0.3rem; }
+  .admin-panel{ max-width:760px; margin:2rem auto 0; padding:1.2rem 1.5rem; background:var(--bg-raised); border:1px solid var(--amber-dim); }
+  .admin-panel h3{ margin-bottom:0.8rem; }
+  .invite-row{ display:flex; align-items:center; gap:0.6rem; margin-bottom:1rem; flex-wrap:wrap; }
+  .invite-row .code{ font-family:'JetBrains Mono', monospace; color:var(--amber); font-size:1.1rem; letter-spacing:0.05em; }
+  .member-row{ display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px dotted var(--hairline); font-size:0.9rem; }
+  .member-row button{ font-size:0.6rem; padding:0.3rem 0.6rem; }
+  .limit-note{ text-align:center; color:var(--parchment-dim); font-size:0.85rem; margin-top:0.5rem; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Character Vault</div>
+  <div class="right">
+    <a href="/vault.html" class="btn">My Vault</a>
+    <button id="logoutBtn">Sign out</button>
+  </div>
+</div>
+
+<div class="hero">
+  <h1 id="sessionName">Loading…</h1>
+</div>
+
+<div class="char-grid" id="charGrid"></div>
+<div class="limit-note" id="limitNote"></div>
+
+<div class="admin-panel" id="adminPanel" style="display:none;">
+  <h3>Session Admin</h3>
+  <div class="invite-row">
+    <span>Invite code:</span>
+    <span class="code" id="inviteCodeDisplay"></span>
+    <button id="regenBtn">Regenerate</button>
+  </div>
+  <div id="memberList"></div>
+  <button class="danger" id="deleteSessionBtn" style="margin-top:1rem;">Delete this session</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(window.location.search);
+const sessionId = params.get('id');
+let isAdmin = false;
+let charLimit = 6;
+
+if(!sessionId){ document.body.innerHTML = '<div class="empty-msg">No session selected.</div>'; }
+else init();
+
+async function init(){
+  const me = await fetch('/api/me');
+  if(!me.ok){ window.location.href = '/'; return; }
+
+  const sRes = await fetch('/api/sessions/' + sessionId);
+  if(!sRes.ok){
+    $('sessionName').textContent = 'Session not found';
+    return;
+  }
+  const s = await sRes.json();
+  $('sessionName').textContent = s.name;
+  isAdmin = s.isAdmin;
+
+  if(isAdmin){
+    $('adminPanel').style.display = 'block';
+    $('inviteCodeDisplay').textContent = s.inviteCode;
+    renderMembers(s.members);
+  }
+
+  await loadCharacters();
+}
+
+async function loadCharacters(){
+  const res = await fetch('/api/sessions/' + sessionId + '/characters');
+  const data = await res.json();
+  charLimit = data.limit;
+  renderCharacters(data.characters, data.countForYou);
+}
+
+function renderCharacters(characters, countForYou){
+  const grid = $('charGrid');
+  grid.innerHTML = '';
+  characters.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'char-card';
+    const updated = new Date(c.updatedAt + 'Z').toLocaleString();
+    card.innerHTML = `
+      <h3>${escapeHTML(c.name)}</h3>
+      <div class="owner-tag">${c.isOwner ? 'Yours' : 'by ' + escapeHTML(c.ownerName)}</div>
+      <div class="updated">Updated ${updated}</div>
+      <div class="actions">
+        <button class="open">${c.isOwner ? 'Open' : 'View'}</button>
+        ${(c.isOwner || isAdmin) ? '<button class="danger del">Delete</button>' : ''}
+      </div>
+    `;
+    card.querySelector('.open').addEventListener('click', () => { window.location.href = '/sheet.html?id=' + c.id; });
+    const delBtn = card.querySelector('.del');
+    if(delBtn){
+      delBtn.addEventListener('click', async () => {
+        if(!confirm(`Delete "${c.name}"? This cannot be undone.`)) return;
+        await fetch('/api/characters/' + c.id, { method:'DELETE' });
+        loadCharacters();
+      });
+    }
+    grid.appendChild(card);
+  });
+
+  if(countForYou < charLimit){
+    const newCard = document.createElement('div');
+    newCard.className = 'char-card new-char-card';
+    newCard.textContent = '+ New Character';
+    newCard.addEventListener('click', async () => {
+      const res = await fetch('/api/characters', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId }) });
+      const data = await res.json();
+      if(!res.ok){ alert(data.error); return; }
+      window.location.href = '/sheet.html?id=' + data.id;
+    });
+    grid.appendChild(newCard);
+
+    const importCard = document.createElement('div');
+    importCard.className = 'char-card new-char-card';
+    importCard.textContent = '⇪ Import from PDF';
+    importCard.addEventListener('click', () => { window.location.href = '/import.html?sessionId=' + sessionId; });
+    grid.appendChild(importCard);
+
+    $('limitNote').textContent = '';
+  } else {
+    $('limitNote').textContent = `You've reached the limit of ${charLimit} characters in this session.`;
+  }
+}
+
+function renderMembers(members){
+  const wrap = $('memberList');
+  wrap.innerHTML = '';
+  members.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    row.innerHTML = `<span>${escapeHTML(m.displayName)}</span>`;
+    const isSelf = false; // server prevents self-removal anyway; keep UI simple
+    const btn = document.createElement('button');
+    btn.className = 'danger';
+    btn.textContent = 'Remove';
+    btn.addEventListener('click', async () => {
+      if(!confirm(`Remove ${m.displayName} from this session? Their characters here will be deleted (their account and other sessions are unaffected).`)) return;
+      const res = await fetch(`/api/sessions/${sessionId}/members/${m.id}`, { method:'DELETE' });
+      if(!res.ok){ const d = await res.json(); alert(d.error); return; }
+      init();
+    });
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  });
+}
+
+$('regenBtn').addEventListener('click', async () => {
+  if(!confirm('Regenerate the invite code? The old code will stop working immediately.')) return;
+  const res = await fetch(`/api/sessions/${sessionId}/regenerate-code`, { method:'POST' });
+  const data = await res.json();
+  $('inviteCodeDisplay').textContent = data.inviteCode;
+});
+
+$('deleteSessionBtn').addEventListener('click', async () => {
+  if(!confirm('Delete this entire session, including every member\'s characters in it? This cannot be undone.')) return;
+  await fetch('/api/sessions/' + sessionId, { method:'DELETE' });
+  window.location.href = '/vault.html';
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method:'POST' });
+  window.location.href = '/';
+});
+
+function escapeHTML(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

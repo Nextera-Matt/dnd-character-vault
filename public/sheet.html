@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character Sheet — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  header{ position:relative; text-align:center; padding:3.5rem 1.5rem 2.5rem; overflow:hidden; }
+  header::before{
+    content:""; position:absolute; inset:0;
+    background:radial-gradient(circle at 50% 30%, rgba(201,151,60,0.10), transparent 55%);
+    animation:flicker 7s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes flicker{ 0%,100%{opacity:1;} 45%{opacity:0.75;} 50%{opacity:0.95;} 72%{opacity:0.65;} }
+  @media (prefers-reduced-motion: reduce){ header::before{ animation:none; } }
+  header h1{ font-size:clamp(2rem, 6vw, 3rem); position:relative; display:inline-block; }
+  #charName{ min-width:200px; display:inline-block; }
+  header .subtitle{ margin-top:0.6rem; color:var(--parchment-dim); font-style:italic; font-size:1.1rem; position:relative; }
+  #subtitle{ display:inline-block; min-width:150px; }
+
+  .vitals{ display:flex; justify-content:center; flex-wrap:wrap; max-width:640px; margin:2rem auto 0; border:1px solid var(--hairline); background:var(--bg-raised); }
+  .vital{ flex:1 1 90px; text-align:center; padding:1rem 0.5rem; border-right:1px solid var(--hairline); }
+  .vital:last-child{ border-right:none; }
+  .vital .num{ font-family:'JetBrains Mono', monospace; font-size:1.6rem; font-weight:600; color:var(--parchment); text-align:center; }
+  .vital .num input{ text-align:center; font:inherit; color:inherit; }
+  .vital .lbl{ font-family:'Cinzel', serif; font-size:0.65rem; letter-spacing:0.12em; color:var(--amber-dim); text-transform:uppercase; margin-top:0.25rem; }
+  .vital.hp .num{ display:flex; align-items:center; justify-content:center; gap:0.15rem; }
+  .vital.hp input{ width:2.4rem; text-align:center; }
+
+  .sheetnav{
+    position:sticky; top:0; z-index:9; background:rgba(16,13,15,0.92); backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--hairline); display:flex; justify-content:center; align-items:center;
+    gap:0.5rem; padding:0.8rem 1rem; flex-wrap:wrap;
+  }
+  .sheetnav a{
+    font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--parchment-dim); text-decoration:none; padding:0.35rem 0.8rem; border:1px solid transparent;
+  }
+  .sheetnav a:hover{ color:var(--amber); border-color:var(--amber-dim); }
+
+  main{ max-width:760px; margin:0 auto; padding:0 1.5rem; }
+  section{ padding:3rem 0; border-bottom:1px solid var(--hairline); scroll-margin-top:4rem; }
+  section:last-of-type{ border-bottom:none; }
+  .eyebrow{ font-family:'Cinzel', serif; font-size:0.7rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--amber-dim); display:flex; align-items:center; gap:0.6rem; margin-bottom:0.6rem; }
+  .eyebrow::after{ content:""; flex:1; height:1px; background:var(--hairline); }
+  section h2{ font-size:1.6rem; margin-bottom:1.5rem; }
+
+  .abilities{ display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:0.75rem; margin-bottom:2rem; }
+  .ability{ background:var(--bg-raised); border:1px solid var(--hairline); text-align:center; padding:1rem 0.5rem; position:relative; }
+  .ability .score-name{ font-family:'Cinzel', serif; font-size:0.7rem; letter-spacing:0.1em; color:var(--amber-dim); }
+  .ability .score{ font-family:'JetBrains Mono', monospace; font-size:1.5rem; margin:0.35rem 0 0.1rem; color:var(--parchment); text-align:center; width:100%; }
+  input[type="number"]{
+    -moz-appearance:textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button{
+    -webkit-appearance:none;
+    margin:0;
+  }
+  .ability .mod{ font-family:'JetBrains Mono', monospace; font-size:0.85rem; color:var(--violet); }
+  .ability .savebtn{ margin-top:0.4rem; font-family:'Cinzel', serif; font-size:0.55rem; letter-spacing:0.08em; background:none; border:1px solid var(--hairline); color:var(--parchment-dim); cursor:pointer; padding:2px 6px; text-transform:uppercase; }
+  .ability .savebtn.on{ border-color:var(--oxide); color:var(--oxide); }
+  .ability .savenum{ font-family:'JetBrains Mono', monospace; font-size:0.72rem; color:var(--oxide); margin-top:0.2rem; }
+
+  .info-grid{ display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-bottom:1.5rem; }
+  @media (max-width:560px){ .info-grid{ grid-template-columns:1fr; } }
+  h3{ font-size:0.92rem; letter-spacing:0.06em; margin-bottom:0.6rem; color:var(--amber); }
+  ul.plain{ list-style:none; padding:0; margin:0; }
+  ul.plain li{ padding:0.3rem 0; border-bottom:1px dotted var(--hairline); display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; }
+  ul.plain li .val{ font-family:'JetBrains Mono', monospace; color:var(--violet); width:3.2rem; text-align:right; }
+  ul.plain li .name{ flex:1; }
+  .rm{ background:none; border:none; color:var(--hairline); cursor:pointer; font-size:0.9rem; padding:0 4px; }
+  .rm:hover{ color:var(--oxide); }
+  .add-row{ margin-top:0.6rem; background:none; border:1px dashed var(--hairline); color:var(--parchment-dim); font-family:'Cinzel', serif; font-size:0.65rem; letter-spacing:0.08em; text-transform:uppercase; padding:0.4rem 0.8rem; cursor:pointer; width:100%; }
+  .add-row:hover{ border-color:var(--amber-dim); color:var(--amber); }
+
+  .trait-block{ margin-bottom:1.1rem; padding-left:1rem; border-left:2px solid var(--violet); position:relative; }
+  .trait-block .t-name{ font-family:'Cinzel', serif; font-size:0.82rem; color:var(--amber); letter-spacing:0.04em; }
+  .trait-block p{ margin:0.3rem 0 0; font-size:0.95rem; color:var(--parchment-dim); }
+  .trait-block .rm{ position:absolute; top:0; right:0; }
+
+  .spell-slots{ margin-bottom:1.8rem; }
+  .spell-slot-tier{ display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; font-family:'Cinzel', serif; font-size:0.72rem; letter-spacing:0.08em; color:var(--amber-dim); text-transform:uppercase; }
+  .slot-dot{ width:14px; height:14px; border:1.5px solid var(--amber); background:transparent; cursor:pointer; clip-path:polygon(50% 0%, 100% 35%, 78% 100%, 22% 100%, 0% 35%); }
+  .slot-dot.used{ background:var(--amber); }
+  .spell-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:0.9rem; margin-bottom:0.9rem; }
+  .spell-card{ background:var(--bg-raised); border:1px solid var(--hairline); padding:0.9rem 1rem; position:relative; }
+  .spell-card .s-name{ font-family:'Cinzel', serif; font-size:0.9rem; color:var(--parchment); margin-bottom:0.2rem; }
+  .spell-card .s-tag{ font-family:'JetBrains Mono', monospace; font-size:0.66rem; color:var(--violet); text-transform:uppercase; letter-spacing:0.05em; }
+  .spell-card .s-info{ font-family:'EB Garamond', serif; font-size:0.82rem; color:var(--parchment-dim); margin-top:0.35rem; min-height:1.1em; }
+  .spell-card .s-info:empty::before{ content: attr(data-placeholder); color:var(--hairline); font-style:italic; }
+  .spell-card .rm{ position:absolute; top:4px; right:6px; }
+
+  .gear-list{ list-style:none; padding:0; margin:0 0 1rem; }
+  .gear-list li{ padding:0.55rem 0; border-bottom:1px dotted var(--hairline); font-size:1rem; display:flex; align-items:center; gap:0.5rem; }
+  .gear-list li .name{ flex:1; }
+  .gold-row{ display:flex; align-items:center; gap:0.5rem; margin-top:0.75rem; }
+  .gold{ display:inline-flex; align-items:center; gap:0.3rem; font-family:'JetBrains Mono', monospace; color:var(--amber); border:1px solid var(--amber-dim); padding:0.35rem 0.9rem; font-size:0.9rem; }
+  .gold input{ width:4rem; text-align:right; }
+
+  .quad{ display:grid; grid-template-columns:1fr 1fr; gap:1rem 2rem; margin-bottom:2rem; }
+  @media (max-width:560px){ .quad{ grid-template-columns:1fr; } }
+  .quad .q-label{ font-family:'Cinzel', serif; font-size:0.66rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--amber-dim); margin-bottom:0.25rem; }
+  .quad p{ margin:0; font-size:0.95rem; color:var(--parchment-dim); }
+
+  .backstory p{ font-size:1.05rem; color:var(--parchment); margin:0 0 1.1rem; }
+  .backstory p:first-of-type::first-letter{ font-family:'Cinzel', serif; font-size:3rem; float:left; line-height:0.8; padding:0.1rem 0.5rem 0 0; color:var(--amber); }
+
+  footer{ text-align:center; padding:2.5rem 1.5rem 4rem; color:var(--hairline); font-family:'JetBrains Mono', monospace; font-size:0.72rem; letter-spacing:0.08em; }
+  footer .shard{ width:8px; height:8px; }
+
+  #loadError{ text-align:center; padding:4rem 1.5rem; color:var(--oxide); }
+  .roll-btn{ background:none; border:1px solid var(--hairline); color:var(--parchment-dim); cursor:pointer; font-size:0.68rem; padding:2px 5px; margin-left:4px; }
+  .roll-btn:hover{ border-color:var(--amber-dim); color:var(--amber); }
+
+  .dice-fab{
+    position:fixed; bottom:1rem; left:1rem; z-index:25; width:46px; height:46px; border-radius:50%;
+    background:var(--bg-raised); border:1px solid var(--amber-dim); color:var(--amber); font-size:1.4rem;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .dice-tray{
+    position:fixed; bottom:4.4rem; left:1rem; z-index:25; width:260px;
+    background:var(--bg-raised); border:1px solid var(--hairline); padding:1rem; display:none;
+  }
+  .dice-tray.open{ display:block; }
+  .dice-tray h4{ font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.08em; color:var(--amber-dim); text-transform:uppercase; margin:0 0 0.6rem; }
+  .die-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:0.4rem; margin-bottom:0.6rem; }
+  .die-grid button{ padding:0.4rem 0; font-family:'JetBrains Mono', monospace; font-size:0.72rem; }
+  .dice-controls{ display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; font-size:0.7rem; color:var(--parchment-dim); }
+  .dice-controls input{ width:3rem; text-align:center; border:1px solid var(--hairline); background:transparent; color:inherit; padding:2px; }
+  .dice-result{ font-family:'JetBrains Mono', monospace; font-size:1.4rem; color:var(--amber); text-align:center; padding:0.6rem 0; border-top:1px solid var(--hairline); }
+  .dice-result.crit{ color:#6fae6f; }
+  .dice-result.fumble{ color:var(--oxide); }
+  .adv-toggle{ display:flex; gap:0.3rem; margin-bottom:0.6rem; }
+  .adv-toggle button{ flex:1; font-size:0.6rem; padding:0.35rem 0; }
+  .adv-toggle button.active{ border-color:var(--amber); color:var(--amber); }
+  .clear-history-btn{ font-size:0.6rem; padding:0.3rem; width:100%; margin-top:0.4rem; }
+  .dice-history b{ color:var(--amber); }
+  .autocomplete-dropdown{
+    background:var(--bg-raised); border:1px solid var(--amber-dim); max-height:200px; overflow-y:auto;
+    z-index:60; font-family:'EB Garamond', serif; box-shadow:0 6px 16px rgba(0,0,0,0.5);
+  }
+  .autocomplete-item{ padding:0.5rem 0.9rem; cursor:pointer; font-size:0.95rem; color:var(--parchment); border-bottom:1px dotted var(--hairline); }
+  .autocomplete-item:last-child{ border-bottom:none; }
+  .autocomplete-item:hover, .autocomplete-item.highlighted{ background:rgba(201,151,60,0.12); color:var(--amber); }
+  .dice-history{ max-height:110px; overflow-y:auto; font-size:0.7rem; color:var(--parchment-dim); margin-top:0.4rem; }
+  .dice-history div{ padding:0.25rem 0; border-bottom:1px dotted var(--hairline); }
+</style>
+</head>
+<body>
+
+<div class="sheetnav">
+  <a href="/vault.html" id="backLink">&larr; My Vault</a>
+  <a href="/glossary.html">Glossary</a>
+  <button id="exportBtn" style="display:none;">Export JSON</button>
+  <span id="moveWrap" style="display:none; align-items:center; gap:0.4rem;">
+    <select id="moveSelect" style="background:var(--bg-raised); color:var(--parchment); border:1px solid var(--hairline); font-size:0.75rem; padding:0.3rem;"></select>
+    <button id="moveBtn">Move</button>
+  </span>
+  <span id="saveStatus">loading&hellip;</span>
+</div>
+
+<div id="appRoot" style="display:none;">
+<header>
+  <h1><span class="shard"></span><span id="charName" contenteditable="true">New Character</span><span class="shard"></span></h1>
+  <div class="subtitle" id="subtitle" contenteditable="true"></div>
+
+  <div class="vitals">
+    <div class="vital"><div class="num"><input id="v-ac" type="number" value="10"></div><div class="lbl">AC</div></div>
+    <div class="vital hp"><div class="num"><input id="v-hpcur" type="number" value="8">/<input id="v-hpmax" type="number" value="8"></div><div class="lbl">HP</div></div>
+    <div class="vital"><div class="num"><input id="v-speed" type="number" value="30"></div><div class="lbl">Speed</div></div>
+    <div class="vital"><div class="num"><input id="v-init" type="text" value="+0"></div><div class="lbl">Init</div></div>
+    <div class="vital"><div class="num"><input id="v-prof" type="number" value="2"></div><div class="lbl">Prof</div></div>
+  </div>
+</header>
+
+<main>
+  <section id="vitals">
+    <div class="eyebrow">I. Vitals &amp; Traits</div>
+    <h2>Body &amp; Bearing</h2>
+    <div class="abilities" id="abilitiesGrid"></div>
+    <div class="info-grid">
+      <div>
+        <h3>Skills</h3>
+        <ul class="plain" id="skillsList"></ul>
+        <button class="add-row" data-add="skills">+ Add skill</button>
+      </div>
+      <div>
+        <h3>Languages</h3>
+        <ul class="plain" id="langList"></ul>
+        <button class="add-row" data-add="languages">+ Add language</button>
+      </div>
+    </div>
+    <h3 style="margin-top:2rem;">Traits &amp; Features</h3>
+    <div id="traitsList"></div>
+    <button class="add-row" data-add="traits">+ Add trait</button>
+  </section>
+
+  <section id="attacks">
+    <div class="eyebrow">II. Combat</div>
+    <h2>Attacks</h2>
+    <div class="spell-grid" id="attacksGrid" style="grid-template-columns:1fr;"></div>
+    <button class="add-row" data-add="attacks">+ Add attack</button>
+  </section>
+
+  <section id="spells">
+    <div class="eyebrow">III. Spellwork</div>
+    <h2>Spells &amp; Slots</h2>
+    <div class="spell-slots" id="slotsRow"></div>
+    <h3>Cantrips</h3>
+    <div class="spell-grid" id="cantripGrid"></div>
+    <button class="add-row" data-add="cantrips">+ Add cantrip</button>
+    <h3 style="margin-top:1.75rem;">Prepared / Known Spells</h3>
+    <div class="spell-grid" id="preparedGrid"></div>
+    <button class="add-row" data-add="prepared">+ Add spell</button>
+  </section>
+
+  <section id="gear">
+    <div class="eyebrow">IV. Possessions</div>
+    <h2>What I Carry</h2>
+    <ul class="gear-list" id="gearList"></ul>
+    <button class="add-row" data-add="gear">+ Add item</button>
+    <div class="gold-row"><div class="gold">GP <input id="v-gold" type="number" value="0"></div></div>
+  </section>
+
+  <section id="story">
+    <div class="eyebrow">V. Who I Am</div>
+    <h2>Notes from the Journal</h2>
+    <div class="quad">
+      <div><div class="q-label">Trait</div><p id="q-trait" contenteditable="true"></p></div>
+      <div><div class="q-label">Ideal</div><p id="q-ideal" contenteditable="true"></p></div>
+      <div><div class="q-label">Bond</div><p id="q-bond" contenteditable="true"></p></div>
+      <div><div class="q-label">Flaw</div><p id="q-flaw" contenteditable="true"></p></div>
+    </div>
+    <div class="backstory" id="backstory" contenteditable="true"></div>
+  </section>
+</main>
+
+<footer><span class="shard"></span> Character Vault <span class="shard"></span></footer>
+<button class="dice-fab" id="diceFab" title="Roll dice">🎲</button>
+<div class="dice-tray" id="diceTray">
+  <h4>Dice Tray</h4>
+  <div class="die-grid">
+    <button data-die="4">d4</button>
+    <button data-die="6">d6</button>
+    <button data-die="8">d8</button>
+    <button data-die="10">d10</button>
+    <button data-die="12">d12</button>
+    <button data-die="20">d20</button>
+    <button data-die="100">d100</button>
+  </div>
+  <div class="adv-toggle" id="advToggle">
+    <button data-mode="normal" class="active">Normal</button>
+    <button data-mode="adv">Advantage</button>
+    <button data-mode="dis">Disadvantage</button>
+  </div>
+  <div class="dice-controls">
+    <span>Count</span><input id="diceCount" type="number" value="1" min="1" max="20">
+    <span>Mod</span><input id="diceMod" type="number" value="0">
+  </div>
+  <div class="dice-result" id="diceResult">—</div>
+  <div class="dice-history" id="diceHistory"></div>
+  <button class="clear-history-btn" id="clearHistoryBtn">Clear History</button>
+</div>
+</div>
+
+<div id="loadError" style="display:none;"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(window.location.search);
+const charId = params.get('id');
+
+let state = null;
+let saveTimer = null;
+let saveInFlight = false;
+let isOwner = true;
+
+if(!charId){
+  showError('No character selected.');
+} else {
+  init();
+}
+
+async function init(){
+  const meRes = await fetch('/api/me');
+  if(!meRes.ok){ window.location.href = '/'; return; }
+
+  const res = await fetch('/api/characters/' + charId);
+  if(!res.ok){
+    showError(res.status === 404 ? 'Character not found, or you don\'t have access to it.' : 'Could not load this character.');
+    return;
+  }
+  const payload = await res.json();
+  state = payload.data;
+  if(!Array.isArray(state.attacks)) state.attacks = [];
+  if(!Array.isArray(state.slots)){
+    // Old shape was a single object {total, used} meaning "1st-level slots".
+    // Migrate it into the new multi-tier array shape transparently.
+    const old = state.slots || { total: 0, used: 0 };
+    state.slots = [{ level: 1, total: old.total || 0, used: old.used || 0 }];
+  }
+  isOwner = payload.isOwner;
+
+  $('backLink').href = '/session.html?id=' + payload.sessionId;
+  $('backLink').textContent = '← ' + payload.sessionName;
+
+  if(!isOwner){
+    const banner = document.createElement('div');
+    banner.id = 'readOnlyBanner';
+    banner.style.cssText = 'background:var(--bg-raised);border-bottom:1px solid var(--violet);text-align:center;padding:0.6rem;font-size:0.85rem;color:var(--violet);';
+    banner.textContent = `Viewing ${payload.ownerName}'s character — read only`;
+    document.body.insertBefore(banner, document.querySelector('.sheetnav'));
+    $('saveStatus').textContent = '';
+  }
+
+  $('appRoot').style.display = 'block';
+  $('exportBtn').style.display = 'inline-block';
+  if(isOwner){ loadMoveOptions(payload.sessionId); }
+  renderAll();
+  if(!isOwner){ applyReadOnlyLock(); } else { markSaved(); }
+}
+
+function applyReadOnlyLock(){
+  document.querySelectorAll('#appRoot input, #appRoot button:not(.roll-btn)').forEach(el => el.disabled = true);
+  document.querySelectorAll('#appRoot [contenteditable]').forEach(el => el.contentEditable = 'false');
+  document.querySelectorAll('#appRoot .rm, #appRoot .add-row, #appRoot .savebtn').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('#appRoot .slot-dot').forEach(el => el.style.pointerEvents = 'none');
+}
+
+function showError(msg){
+  $('loadError').textContent = msg;
+  $('loadError').style.display = 'block';
+  $('saveStatus').textContent = '';
+}
+
+function markSaving(){ $('saveStatus').textContent = 'saving…'; $('saveStatus').classList.remove('saved'); }
+function markSaved(){ $('saveStatus').textContent = 'saved'; $('saveStatus').classList.add('saved'); }
+function markError(){ $('saveStatus').textContent = 'save failed — retrying'; $('saveStatus').classList.remove('saved'); }
+
+function saveState(){
+  if(!isOwner) return;
+  markSaving();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 500);
+}
+
+async function doSave(){
+  if(saveInFlight){ saveTimer = setTimeout(doSave, 300); return; }
+  saveInFlight = true;
+  try{
+    const res = await fetch('/api/characters/' + charId, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(state)
+    });
+    if(!res.ok) throw new Error('bad status');
+    markSaved();
+  }catch(e){
+    markError();
+    saveTimer = setTimeout(doSave, 2000);
+  }finally{
+    saveInFlight = false;
+  }
+}
+
+function mod(score){ return Math.floor((score-10)/2); }
+function fmtMod(n){ return (n>=0?'+':'') + n; }
+
+const SKILL_LIST = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
+const LANGUAGE_LIST = ["Common","Dwarvish","Elvish","Giant","Gnomish","Goblin","Halfling","Orc","Abyssal","Celestial","Draconic","Deep Speech","Infernal","Primordial","Sylvan","Undercommon"];
+const WEAPON_LIST = ["Unarmed Strike","Club","Dagger","Greatclub","Handaxe","Javelin","Light Hammer","Mace","Quarterstaff","Sickle","Spear","Dart","Light Crossbow","Shortbow","Sling","Battleaxe","Flail","Glaive","Greataxe","Greatsword","Halberd","Lance","Longsword","Maul","Morningstar","Pike","Rapier","Scimitar","Shortsword","Trident","War Pick","Warhammer","Whip","Blowgun","Hand Crossbow","Heavy Crossbow","Longbow","Net"];
+
+// Custom themed autocomplete — replaces native <datalist>, which can't be
+// styled at all (it renders outside the normal page in most browsers).
+function attachAutocomplete(inputEl, options){
+  let dropdown = null, highlightIndex = -1, currentMatches = [];
+
+  function close(){
+    if(dropdown){ dropdown.remove(); dropdown = null; }
+    highlightIndex = -1;
+  }
+
+  function highlight(i){
+    if(!dropdown) return;
+    [...dropdown.children].forEach((el,idx)=>el.classList.toggle('highlighted', idx===i));
+    highlightIndex = i;
+  }
+
+  function choose(value){
+    inputEl.value = value;
+    inputEl.dispatchEvent(new Event('input', { bubbles:true }));
+    close();
+  }
+
+  function open(){
+    close();
+    const q = inputEl.value.trim().toLowerCase();
+    currentMatches = (q ? options.filter(o=>o.toLowerCase().includes(q)) : options).slice(0,8);
+    if(!currentMatches.length) return;
+    dropdown = document.createElement('div');
+    dropdown.className = 'autocomplete-dropdown';
+    const rect = inputEl.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = rect.bottom + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = Math.max(rect.width, 160) + 'px';
+    currentMatches.forEach(m=>{
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      item.textContent = m;
+      item.addEventListener('mousedown', e=>{ e.preventDefault(); choose(m); });
+      dropdown.appendChild(item);
+    });
+    document.body.appendChild(dropdown);
+  }
+
+  inputEl.addEventListener('focus', open);
+  inputEl.addEventListener('input', open);
+  inputEl.addEventListener('blur', ()=>setTimeout(close, 150));
+  inputEl.addEventListener('keydown', e=>{
+    if(!dropdown) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); highlight(Math.min(highlightIndex+1, currentMatches.length-1)); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); highlight(Math.max(highlightIndex-1, 0)); }
+    else if(e.key==='Enter' && highlightIndex>=0){ e.preventDefault(); choose(currentMatches[highlightIndex]); }
+    else if(e.key==='Escape'){ close(); }
+  });
+}
+
+function renderAll(){
+  $('charName').textContent = state.charName;
+  $('subtitle').innerHTML = state.subtitle;
+  $('v-ac').value = state.vitals.ac;
+  $('v-hpcur').value = state.vitals.hpCur;
+  $('v-hpmax').value = state.vitals.hpMax;
+  $('v-speed').value = state.vitals.speed;
+  $('v-init').value = state.vitals.init;
+  $('v-prof').value = state.vitals.prof;
+  $('v-gold').value = state.vitals.gold;
+
+  renderAbilities();
+  renderSimpleList('skillsList', state.skills, true);
+  renderLangList();
+  renderTraits();
+  renderSlots();
+  renderSpellGrid('cantripGrid', state.cantrips);
+  renderSpellGrid('preparedGrid', state.prepared);
+  renderAttacks();
+  renderGear();
+
+  $('q-trait').textContent = state.quad.trait;
+  $('q-ideal').textContent = state.quad.ideal;
+  $('q-bond').textContent = state.quad.bond;
+  $('q-flaw').textContent = state.quad.flaw;
+  $('backstory').innerHTML = state.backstoryHTML;
+}
+
+function renderAbilities(){
+  const grid = $('abilitiesGrid');
+  grid.innerHTML = '';
+  state.abilities.forEach((a,i)=>{
+    const m = mod(a.score);
+    const saveVal = m + (a.save ? Number(state.vitals.prof) : 0);
+    const div = document.createElement('div');
+    div.className = 'ability';
+    div.innerHTML = `
+      <div class="score-name">${a.key}</div>
+      <input class="score mono" type="number" value="${a.score}" data-i="${i}">
+      <div class="mod" id="mod-${i}">${fmtMod(m)}</div>
+      <button class="roll-btn roll-ability" data-i="${i}" title="Roll ${a.key} check">🎲</button>
+      <button class="savebtn ${a.save?'on':''}" data-i="${i}">${a.save?'★ Save':'☆ Save'}</button>
+      <div class="savenum" id="savenum-${i}">${a.save? 'Save '+fmtMod(saveVal) : ''}</div>
+      ${a.save ? `<button class="roll-btn roll-save" data-i="${i}" title="Roll ${a.key} save">🎲</button>` : ''}
+    `;
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('input.score').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const i = +e.target.dataset.i;
+      state.abilities[i].score = Number(e.target.value)||0;
+      const m = mod(state.abilities[i].score);
+      $('mod-'+i).textContent = fmtMod(m);
+      if(state.abilities[i].save) $('savenum-'+i).textContent = 'Save ' + fmtMod(m + Number(state.vitals.prof));
+      saveState();
+    });
+  });
+  grid.querySelectorAll('.savebtn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i;
+      state.abilities[i].save = !state.abilities[i].save;
+      renderAbilities(); saveState();
+    });
+  });
+  grid.querySelectorAll('.roll-ability').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i;
+      rollWithModifier(mod(state.abilities[i].score), state.abilities[i].key);
+    });
+  });
+  grid.querySelectorAll('.roll-save').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i;
+      const total = mod(state.abilities[i].score) + Number(state.vitals.prof);
+      rollWithModifier(total, state.abilities[i].key + ' Save');
+    });
+  });
+}
+
+// ---------- Dice ----------
+function rollDie(sides){ return 1 + Math.floor(Math.random()*sides); }
+
+function performRoll(sides, count, modifier, label){
+  const rolls = Array.from({length: Math.max(1, count)}, () => rollDie(sides));
+  const sum = rolls.reduce((a,b)=>a+b,0) + modifier;
+  const modStr = modifier ? (modifier>0?`+${modifier}`:`${modifier}`) : '';
+  const desc = `${count}d${sides}${modStr}`;
+  $('diceResult').textContent = sum;
+  const entry = document.createElement('div');
+  entry.textContent = `${label ? label+': ' : ''}${desc} [${rolls.join(', ')}] = ${sum}`;
+  $('diceHistory').insertBefore(entry, $('diceHistory').firstChild);
+  while($('diceHistory').children.length > 8) $('diceHistory').removeChild($('diceHistory').lastChild);
+  $('diceTray').classList.add('open');
+}
+
+function parseModifier(str){
+  const n = parseInt(String(str).replace(/[^\d+-]/g,''), 10);
+  return isNaN(n) ? 0 : n;
+}
+
+let rollMode = 'normal';
+
+document.querySelectorAll('#advToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    rollMode = btn.dataset.mode;
+    document.querySelectorAll('#advToggle button').forEach(b=>b.classList.toggle('active', b===btn));
+  });
+});
+
+$('clearHistoryBtn').addEventListener('click', ()=>{
+  $('diceHistory').innerHTML = '';
+  $('diceResult').textContent = '—';
+  $('diceResult').className = 'dice-result';
+});
+
+function rollWithModifier(modifier, label){
+  const rolls = rollMode === 'normal' ? [rollDie(20)] : [rollDie(20), rollDie(20)];
+  const picked = rollMode === 'dis' ? Math.min(...rolls) : Math.max(...rolls);
+  const sum = picked + modifier;
+  const modStr = modifier ? (modifier>0?`+${modifier}`:`${modifier}`) : '';
+  const modeTag = rollMode !== 'normal' ? ` (${rollMode==='adv'?'Adv':'Dis'})` : '';
+
+  $('diceResult').textContent = sum;
+  $('diceResult').className = 'dice-result' + (picked===20 ? ' crit' : picked===1 ? ' fumble' : '');
+
+  const rollsDisplay = rolls.length>1
+    ? `[${rolls.map(r=>r===picked ? `<b>${r}</b>` : r).join(', ')}]`
+    : `[${rolls[0]}]`;
+  const entry = document.createElement('div');
+  entry.innerHTML = `${label ? label+': ' : ''}d20${modeTag}${modStr} ${rollsDisplay} = ${sum}`;
+  $('diceHistory').insertBefore(entry, $('diceHistory').firstChild);
+  while($('diceHistory').children.length > 8) $('diceHistory').removeChild($('diceHistory').lastChild);
+  $('diceTray').classList.add('open');
+}
+
+$('diceFab').addEventListener('click', () => { $('diceTray').classList.toggle('open'); });
+document.querySelectorAll('.die-grid button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sides = Number(btn.dataset.die);
+    const count = Number($('diceCount').value) || 1;
+    const modifier = Number($('diceMod').value) || 0;
+    performRoll(sides, count, modifier);
+  });
+});
+
+function renderSimpleList(elId, arr, hasVal){
+  const ul = $(elId);
+  ul.innerHTML = '';
+  arr.forEach((item,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <input class="name" type="text" value="${escAttr(item.name)}" data-i="${i}" autocomplete="off">
+      ${hasVal ? `<input class="val" type="text" value="${escAttr(item.val)}" data-i="${i}" data-field="val">` : ''}
+      ${hasVal ? `<button class="roll-btn roll-skill" data-i="${i}" title="Roll this skill">🎲</button>` : ''}
+      <button class="rm" data-i="${i}">×</button>
+    `;
+    ul.appendChild(li);
+  });
+  ul.querySelectorAll('input.name').forEach(inp=>{
+    inp.addEventListener('input', e=>{ arr[+e.target.dataset.i].name = e.target.value; saveState(); });
+    attachAutocomplete(inp, SKILL_LIST);
+  });
+  ul.querySelectorAll('input.val').forEach(inp=>{ inp.addEventListener('input', e=>{ arr[+e.target.dataset.i].val = e.target.value; saveState(); }); });
+  if(hasVal){
+    ul.querySelectorAll('.roll-skill').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        const i = +e.target.dataset.i;
+        rollWithModifier(parseModifier(arr[i].val), arr[i].name);
+      });
+    });
+  }
+  ul.querySelectorAll('.rm').forEach(btn=>{ btn.addEventListener('click', e=>{ arr.splice(+e.target.dataset.i,1); renderSimpleList(elId,arr,hasVal); saveState(); }); });
+}
+
+function renderLangList(){
+  const ul = $('langList');
+  ul.innerHTML = '';
+  state.languages.forEach((lang,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<input class="name" type="text" value="${escAttr(lang)}" data-i="${i}" autocomplete="off"><button class="rm" data-i="${i}">×</button>`;
+    ul.appendChild(li);
+  });
+  ul.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', e=>{ state.languages[+e.target.dataset.i] = e.target.value; saveState(); });
+    attachAutocomplete(inp, LANGUAGE_LIST);
+  });
+  ul.querySelectorAll('.rm').forEach(btn=>{ btn.addEventListener('click', e=>{ state.languages.splice(+e.target.dataset.i,1); renderLangList(); saveState(); }); });
+}
+
+function renderTraits(){
+  const wrap = $('traitsList');
+  wrap.innerHTML = '';
+  state.traits.forEach((t,i)=>{
+    const div = document.createElement('div');
+    div.className = 'trait-block';
+    div.innerHTML = `
+      <button class="rm" data-i="${i}">×</button>
+      <div class="t-name" contenteditable="true" data-i="${i}" data-field="title">${t.title}</div>
+      <p contenteditable="true" data-i="${i}" data-field="body">${t.body}</p>
+    `;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('[contenteditable]').forEach(el=>{
+    el.addEventListener('input', e=>{ state.traits[+e.target.dataset.i][e.target.dataset.field] = e.target.textContent; saveState(); });
+  });
+  wrap.querySelectorAll('.rm').forEach(btn=>{ btn.addEventListener('click', e=>{ state.traits.splice(+e.target.dataset.i,1); renderTraits(); saveState(); }); });
+}
+
+function renderSlots(){
+  const wrap = $('slotsRow');
+  wrap.innerHTML = '';
+  state.slots.forEach((tier, tierIdx) => {
+    const row = document.createElement('div');
+    row.className = 'spell-slot-tier';
+    const label = document.createElement('span');
+    label.textContent = ordinal(tier.level) + ' Level';
+    row.appendChild(label);
+    for(let i=0;i<tier.total;i++){
+      const dot = document.createElement('span');
+      dot.className = 'slot-dot' + (i < tier.used ? ' used' : '');
+      dot.addEventListener('click', ()=>{ tier.used = (i < tier.used) ? i : i+1; renderSlots(); saveState(); });
+      row.appendChild(dot);
+    }
+    const minus = document.createElement('button'); minus.className='rm'; minus.textContent='−slot'; minus.style.marginLeft='0.5rem';
+    minus.addEventListener('click', ()=>{ if(tier.total>0){ tier.total--; tier.used=Math.min(tier.used,tier.total); renderSlots(); saveState(); }});
+    const plus = document.createElement('button'); plus.className='rm'; plus.textContent='+slot';
+    plus.addEventListener('click', ()=>{ tier.total++; renderSlots(); saveState(); });
+    const removeTier = document.createElement('button'); removeTier.className='rm'; removeTier.textContent='remove tier';
+    removeTier.addEventListener('click', ()=>{ state.slots.splice(tierIdx,1); renderSlots(); saveState(); });
+    row.appendChild(minus); row.appendChild(plus);
+    if(state.slots.length > 1) row.appendChild(removeTier);
+    wrap.appendChild(row);
+  });
+  const addTier = document.createElement('button');
+  addTier.className = 'add-row';
+  addTier.style.marginTop = '0.5rem';
+  addTier.textContent = '+ Add spell level tier';
+  addTier.addEventListener('click', ()=>{
+    const nextLevel = state.slots.length ? Math.max(...state.slots.map(t=>t.level)) + 1 : 1;
+    state.slots.push({ level: nextLevel, total: 0, used: 0 });
+    renderSlots(); saveState();
+  });
+  wrap.appendChild(addTier);
+}
+
+function ordinal(n){
+  const s = ['th','st','nd','rd'];
+  const v = n % 100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+
+function renderSpellGrid(elId, arr){
+  const grid = $(elId);
+  grid.innerHTML = '';
+  arr.forEach((s,i)=>{
+    const div = document.createElement('div');
+    div.className = 'spell-card';
+    div.innerHTML = `
+      <button class="rm" data-i="${i}">×</button>
+      <div class="s-name" contenteditable="true" data-i="${i}" data-field="name">${s.name}</div>
+      <div class="s-tag" contenteditable="true" data-i="${i}" data-field="tag">${s.tag}</div>
+      <div class="s-info" contenteditable="true" data-i="${i}" data-field="info" data-placeholder="Cast time · range · duration">${s.info || ''}</div>
+    `;
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('[contenteditable]').forEach(el=>{
+    el.addEventListener('input', e=>{ arr[+e.target.dataset.i][e.target.dataset.field] = e.target.textContent; saveState(); });
+  });
+  grid.querySelectorAll('.rm').forEach(btn=>{ btn.addEventListener('click', e=>{ arr.splice(+e.target.dataset.i,1); renderSpellGrid(elId,arr); saveState(); }); });
+}
+
+function renderAttacks(){
+  const grid = $('attacksGrid');
+  grid.innerHTML = '';
+  state.attacks.forEach((a,i)=>{
+    const div = document.createElement('div');
+    div.className = 'spell-card';
+    div.innerHTML = `
+      <button class="rm" data-i="${i}">×</button>
+      <input class="name" type="text" value="${escAttr(a.name)}" data-i="${i}" data-field="name" style="border:none; border-bottom:1px dotted var(--hairline); background:transparent; color:inherit; font-family:inherit; font-size:0.95rem; padding:2px 0; width:calc(100% - 1.5rem);" autocomplete="off">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+        <input class="mono" type="text" value="${escAttr(a.bonus)}" data-i="${i}" data-field="bonus" style="width:3rem; text-align:center;" title="To-hit bonus">
+        <input class="mono" type="text" value="${escAttr(a.damage)}" data-i="${i}" data-field="damage" style="width:5.5rem; text-align:center;" title="Damage dice">
+        <input type="text" value="${escAttr(a.range || '')}" data-i="${i}" data-field="range" placeholder="Range / properties" style="flex:1; min-width:7rem; border:none; border-bottom:1px dotted var(--hairline); background:transparent; color:var(--parchment-dim); font-size:0.82rem; padding:2px 0;">
+        <button class="roll-btn" data-i="${i}" data-kind="hit" title="Roll to hit">🎲 Hit</button>
+        <button class="roll-btn" data-i="${i}" data-kind="dmg" title="Roll damage">🎲 Dmg</button>
+      </div>
+    `;
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('input.name').forEach(inp=>{
+    inp.addEventListener('input', e=>{ state.attacks[+e.target.dataset.i].name = e.target.value; saveState(); });
+    attachAutocomplete(inp, WEAPON_LIST);
+  });
+  grid.querySelectorAll('input:not(.name)').forEach(inp=>{
+    inp.addEventListener('input', e=>{ state.attacks[+e.target.dataset.i][e.target.dataset.field] = e.target.value; saveState(); });
+  });
+  grid.querySelectorAll('.roll-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const i = +e.target.dataset.i;
+      const atk = state.attacks[i];
+      if(e.target.dataset.kind === 'hit'){
+        rollWithModifier(parseModifier(atk.bonus), atk.name + ' — to hit');
+      } else {
+        rollDamage(atk.damage, atk.name + ' — damage');
+      }
+    });
+  });
+  grid.querySelectorAll('.rm').forEach(btn=>{
+    btn.addEventListener('click', e=>{ state.attacks.splice(+e.target.dataset.i,1); renderAttacks(); saveState(); });
+  });
+}
+
+function rollDamage(expr, label){
+  const tokens = String(expr).replace(/\s+/g,'').match(/[+-]?\d*d?\d+/gi) || [];
+  let total = 0;
+  const parts = [];
+  tokens.forEach(tok=>{
+    let sign = 1, t = tok;
+    if(t[0]==='+'){ t = t.slice(1); }
+    else if(t[0]==='-'){ sign = -1; t = t.slice(1); }
+    const m = t.match(/^(\d*)d(\d+)$/i);
+    if(m){
+      const count = parseInt(m[1]||'1',10);
+      const sides = parseInt(m[2],10);
+      const rolls = Array.from({length:count}, ()=>rollDie(sides));
+      const sum = rolls.reduce((a,b)=>a+b,0);
+      total += sign*sum;
+      parts.push((sign<0?'-':'')+count+'d'+sides+'['+rolls.join(',')+']');
+    } else {
+      const num = parseInt(t,10)||0;
+      total += sign*num;
+      parts.push((sign<0?'-':'+')+num);
+    }
+  });
+  $('diceResult').textContent = total;
+  $('diceResult').className = 'dice-result';
+  const entry = document.createElement('div');
+  entry.textContent = `${label ? label+': ' : ''}${expr} ${parts.join(' ')} = ${total}`;
+  $('diceHistory').insertBefore(entry, $('diceHistory').firstChild);
+  while($('diceHistory').children.length > 8) $('diceHistory').removeChild($('diceHistory').lastChild);
+  $('diceTray').classList.add('open');
+}
+
+function renderGear(){
+  const ul = $('gearList');
+  ul.innerHTML = '';
+  state.gear.forEach((item,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="name" contenteditable="true" data-i="${i}">${item}</span><button class="rm" data-i="${i}">×</button>`;
+    ul.appendChild(li);
+  });
+  ul.querySelectorAll('[contenteditable]').forEach(el=>{ el.addEventListener('input', e=>{ state.gear[+e.target.dataset.i] = e.target.textContent; saveState(); }); });
+  ul.querySelectorAll('.rm').forEach(btn=>{ btn.addEventListener('click', e=>{ state.gear.splice(+e.target.dataset.i,1); renderGear(); saveState(); }); });
+}
+
+function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+$('exportBtn').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.charName || 'character').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+async function loadMoveOptions(currentSessionId){
+  const res = await fetch('/api/sessions');
+  const { sessions } = await res.json();
+  const others = sessions.filter(s => s.id !== currentSessionId);
+  if(!others.length) return; // only session you're in — nowhere to move to
+  $('moveSelect').innerHTML = others.map(s => `<option value="${s.id}">${escAttr(s.name)}</option>`).join('');
+  $('moveWrap').style.display = 'inline-flex';
+}
+
+$('moveBtn').addEventListener('click', async ()=>{
+  const targetSessionId = $('moveSelect').value;
+  if(!targetSessionId) return;
+  const targetName = $('moveSelect').selectedOptions[0].textContent;
+  if(!confirm(`Move this character to "${targetName}"? Members of its current session will no longer be able to see it.`)) return;
+  const res = await fetch('/api/characters/' + charId + '/move', {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ targetSessionId })
+  });
+  const d = await res.json();
+  if(!res.ok){ alert(d.error); return; }
+  window.location.href = '/session.html?id=' + targetSessionId;
+});
+
+$('charName').addEventListener('input', e=>{ state.charName = e.target.textContent; saveState(); });
+$('subtitle').addEventListener('input', e=>{ state.subtitle = e.target.innerHTML; saveState(); });
+['ac','hpcur','hpmax','speed','init','prof','gold'].forEach(f=>{
+  $('v-'+f).addEventListener('input', e=>{
+    const key = f==='hpcur'?'hpCur': f==='hpmax'?'hpMax': f;
+    state.vitals[key] = (f==='init') ? e.target.value : Number(e.target.value)||0;
+    saveState();
+  });
+});
+['trait','ideal','bond','flaw'].forEach(f=>{
+  $('q-'+f).addEventListener('input', e=>{ state.quad[f] = e.target.textContent; saveState(); });
+});
+$('backstory').addEventListener('input', e=>{ state.backstoryHTML = e.target.innerHTML; saveState(); });
+
+document.addEventListener('click', e=>{
+  if(!isOwner) return;
+  const btn = e.target.closest('[data-add]');
+  if(!btn) return;
+  const type = btn.dataset.add;
+  if(type==='skills'){ state.skills.push({name:'New Skill', val:'+0'}); renderSimpleList('skillsList', state.skills, true); }
+  if(type==='languages'){ state.languages.push('New Language'); renderLangList(); }
+  if(type==='traits'){ state.traits.push({title:'New Trait', body:''}); renderTraits(); }
+  if(type==='cantrips'){ state.cantrips.push({name:'New Cantrip', tag:'Custom'}); renderSpellGrid('cantripGrid', state.cantrips); }
+  if(type==='prepared'){ state.prepared.push({name:'New Spell', tag:'Custom'}); renderSpellGrid('preparedGrid', state.prepared); }
+  if(type==='gear'){ state.gear.push('New Item'); renderGear(); }
+  if(type==='attacks'){ state.attacks.push({name:'New Attack', bonus:'+0', damage:'1d6', range:''}); renderAttacks(); }
+  saveState();
+});
+</script>
+</body>
+</html>

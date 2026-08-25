@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Import Character — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  .wrap{ max-width:640px; margin:0 auto; padding:2.5rem 1.5rem 4rem; }
+  .dropzone{
+    border:1px dashed var(--hairline); padding:3rem 1.5rem; text-align:center; cursor:pointer;
+    color:var(--parchment-dim); transition:border-color 0.15s, color 0.15s;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--amber-dim); color:var(--amber); }
+  .dropzone input{ display:none; }
+  .scope-note{
+    font-size:0.88rem; color:var(--parchment-dim); background:var(--bg-raised);
+    border:1px solid var(--hairline); padding:1rem 1.2rem; margin-bottom:2rem;
+  }
+  .scope-note b{ color:var(--amber); }
+  .status{ text-align:center; margin:1.5rem 0; font-family:'JetBrains Mono', monospace; font-size:0.85rem; color:var(--parchment-dim); }
+  .warnings{ background:var(--bg-raised); border:1px solid var(--oxide); padding:1rem 1.2rem; margin:1.5rem 0; }
+  .warnings h3{ color:var(--oxide); font-size:0.85rem; margin-bottom:0.6rem; }
+  .warnings ul{ margin:0; padding-left:1.2rem; font-size:0.88rem; color:var(--parchment-dim); }
+  .warnings li{ margin-bottom:0.4rem; }
+  .preview{ background:var(--bg-raised); border:1px solid var(--hairline); padding:1.2rem 1.4rem; margin:1.5rem 0; }
+  .preview .row{ display:flex; justify-content:space-between; padding:0.35rem 0; border-bottom:1px dotted var(--hairline); font-size:0.92rem; }
+  .preview .row:last-child{ border-bottom:none; }
+  .preview .row .val{ font-family:'JetBrains Mono', monospace; color:var(--violet); }
+  .actions{ display:flex; gap:0.7rem; margin-top:1.5rem; }
+  .actions button{ flex:1; }
+  #paste-toggle{ display:block; text-align:center; margin-top:1rem; font-size:0.85rem; color:var(--parchment-dim); cursor:pointer; text-decoration:underline; text-decoration-color:var(--hairline); }
+  textarea{
+    width:100%; min-height:180px; background:var(--bg-raised); border:1px solid var(--hairline);
+    color:var(--parchment); font-family:'JetBrains Mono', monospace; font-size:0.82rem; padding:0.8rem;
+    margin-top:0.8rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Character Vault</div>
+  <a href="/vault.html" class="btn">&larr; My Vault</a>
+</div>
+
+<div class="wrap">
+  <h1 style="text-align:center; margin-bottom:0.5rem;">Import a Character</h1>
+  <div class="scope-note">
+    This reads <b>Roll20's 2024 character sheet PDF export</b> specifically — the "D&D 2024 by Roll20" sheet. Other sources (D&D Beyond PDFs, homebrew fillable sheets, scanned sheets) aren't supported yet and will likely parse badly or not at all. If your table's on Roll20 with the 2024 sheet, this should work well.
+  </div>
+
+  <div id="uploadStage">
+    <div class="dropzone" id="dropzone">
+      <div>Drop a PDF here, or click to choose one</div>
+      <input type="file" id="fileInput" accept="application/pdf">
+    </div>
+    <div id="paste-toggle">Paste extracted text instead</div>
+    <textarea id="pasteArea" style="display:none;" placeholder="Paste the raw text here (e.g. copied from a PDF viewer)"></textarea>
+    <div class="actions" id="pasteActions" style="display:none;">
+      <button class="primary" id="parsePasteBtn">Parse pasted text</button>
+    </div>
+  </div>
+
+  <div class="status" id="status" style="display:none;"></div>
+
+  <div id="reviewStage" style="display:none;">
+    <div class="warnings" id="warningsBox" style="display:none;">
+      <h3>Needs a look</h3>
+      <ul id="warningsList"></ul>
+    </div>
+    <div class="preview" id="previewBox"></div>
+    <div class="actions">
+      <button id="cancelBtn">Start over</button>
+      <button class="primary" id="createBtn">Create character from this</button>
+    </div>
+  </div>
+</div>
+
+<script src="/import-parser.js?v=8"></script>
+<script>
+const $ = id => document.getElementById(id);
+let parsedResult = null;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+$('dropzone').addEventListener('click', () => $('fileInput').click());
+$('dropzone').addEventListener('dragover', e => { e.preventDefault(); $('dropzone').classList.add('drag'); });
+$('dropzone').addEventListener('dragleave', () => $('dropzone').classList.remove('drag'));
+$('dropzone').addEventListener('drop', e => {
+  e.preventDefault();
+  $('dropzone').classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+$('fileInput').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+$('paste-toggle').addEventListener('click', () => {
+  const showing = $('pasteArea').style.display !== 'none';
+  $('pasteArea').style.display = showing ? 'none' : 'block';
+  $('pasteActions').style.display = showing ? 'none' : 'flex';
+});
+$('parsePasteBtn').addEventListener('click', () => {
+  const text = $('pasteArea').value;
+  if (!text.trim()) return;
+  runParse(text);
+});
+
+async function handleFile(file) {
+  if (file.type !== 'application/pdf') { alert('That doesn\'t look like a PDF.'); return; }
+  $('status').style.display = 'block';
+  $('status').textContent = 'Reading PDF…';
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let fullText = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      $('status').textContent = `Reading page ${p} of ${pdf.numPages}…`;
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(it => it.str).join('\n');
+      fullText += pageText + '\n';
+    }
+    runParse(fullText);
+  } catch (e) {
+    console.error(e);
+    $('status').textContent = 'Could not read that PDF — try the "paste text" option instead.';
+  }
+}
+
+function runParse(text) {
+  $('status').style.display = 'block';
+  $('status').textContent = 'Parsing…';
+  let out;
+  try {
+    out = parseRoll20Sheet(text);
+  } catch (e) {
+    console.error(e);
+    $('status').textContent = 'Parsing failed unexpectedly — this may not be a Roll20 2024 sheet export.';
+    return;
+  }
+  parsedResult = out;
+  $('status').style.display = 'none';
+  $('uploadStage').style.display = 'none';
+  showReview(out);
+}
+
+function showReview({ data, warnings }) {
+  $('reviewStage').style.display = 'block';
+  if (warnings.length) {
+    $('warningsBox').style.display = 'block';
+    $('warningsList').innerHTML = warnings.map(w => `<li>${escapeHTML(w)}</li>`).join('');
+  }
+  const rows = [
+    ['Name', data.charName],
+    ['Class / Species', data.subtitle.replace(/&middot;/g, '·')],
+    ['AC', data.vitals.ac],
+    ['HP', `${data.vitals.hpCur} / ${data.vitals.hpMax}`],
+    ['Abilities found', data.abilities.length + ' of 6'],
+    ['Skills found', data.skills.length],
+    ['Languages', data.languages.join(', ') || '(none found)'],
+    ['Gear items', data.gear.length],
+    ['Gold', data.vitals.gold + ' gp'],
+    ['Backstory', data.backstoryHTML.replace(/<[^>]+>/g,'').slice(0,60) + '…'],
+  ];
+  $('previewBox').innerHTML = rows.map(([k,v]) => `<div class="row"><span>${escapeHTML(k)}</span><span class="val">${escapeHTML(String(v))}</span></div>`).join('');
+}
+
+function escapeHTML(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+$('cancelBtn').addEventListener('click', () => {
+  parsedResult = null;
+  $('reviewStage').style.display = 'none';
+  $('uploadStage').style.display = 'block';
+  $('fileInput').value = '';
+  $('pasteArea').value = '';
+});
+
+const sessionId = new URLSearchParams(window.location.search).get('sessionId');
+
+$('createBtn').addEventListener('click', async () => {
+  if (!parsedResult) return;
+  if (!sessionId) { alert('No session specified — go back to a session and use Import from there.'); return; }
+  $('createBtn').disabled = true;
+  $('createBtn').textContent = 'Creating…';
+  const createRes = await fetch('/api/characters', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId })
+  });
+  if (!createRes.ok) {
+    const d = await createRes.json();
+    alert(d.error || 'Could not create the character.');
+    $('createBtn').disabled = false;
+    $('createBtn').textContent = 'Create character from this';
+    return;
+  }
+  const { id } = await createRes.json();
+  const putRes = await fetch('/api/characters/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parsedResult.data)
+  });
+  if (!putRes.ok) { alert('Character created, but the imported data failed to save. You can still edit it manually.'); }
+  window.location.href = '/sheet.html?id=' + id;
+});
+
+// Require sign-in
+fetch('/api/me').then(r => { if (!r.ok) window.location.href = '/'; });
+</script>
+</body>
+</html>
