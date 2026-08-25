@@ -325,3 +325,44 @@ test('site admin cannot delete their own account via the admin endpoint', async 
   const res = await fetch(`${BASE}/api/admin/users/99999`, authed(cookie, { method: 'DELETE' }));
   assert.equal(res.status, 403, 'non-admin should be blocked before self-delete logic is even reached');
 });
+
+// ---------- Security ----------
+
+test('backstoryHTML and subtitle are sanitized on save — script/event-handler payloads are stripped', async () => {
+  const { cookie } = await signup('Xavier', 'xavierpassword1');
+  const sessRes = await fetch(`${BASE}/api/sessions`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ name: 'XSS Test Session' }),
+  }));
+  const { id: sessionId } = await sessRes.json();
+  const charRes = await fetch(`${BASE}/api/characters`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ sessionId }),
+  }));
+  const { id: charId, data } = await charRes.json();
+
+  data.backstoryHTML = '<p>Normal text</p><img src=x onerror="stealCookies()"><script>alert(1)</script>';
+  data.subtitle = '<p onclick="evil()">Sorcerer</p>';
+
+  await fetch(`${BASE}/api/characters/${charId}`, authed(cookie, { method: 'PUT', body: JSON.stringify(data) }));
+
+  const getRes = await fetch(`${BASE}/api/characters/${charId}`, authed(cookie));
+  const saved = await getRes.json();
+
+  assert.ok(saved.data.backstoryHTML.includes('<p>Normal text</p>'), 'legitimate formatting should survive');
+  assert.ok(!saved.data.backstoryHTML.includes('onerror'), 'event handler attribute should be stripped');
+  assert.ok(!saved.data.backstoryHTML.includes('<script>'), 'script tag should be stripped entirely');
+  assert.ok(!saved.data.subtitle.includes('onclick'), 'event handler on subtitle should be stripped');
+});
+
+test('login is rate-limited after repeated failed attempts from the same client', async () => {
+  await signup('RateLimitTarget', 'realpassword123');
+  let lastStatus;
+  for (let i = 0; i < 12; i++) {
+    const res = await fetch(`${BASE}/api/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'RateLimitTarget', password: 'wrongpassword' }),
+    });
+    lastStatus = res.status;
+    if (res.status === 429) break;
+  }
+  assert.equal(lastStatus, 429, 'repeated failed logins should eventually be rate-limited, not just 401 forever');
+});

@@ -3,6 +3,8 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const sanitizeHtml = require('sanitize-html');
 const path = require('path');
 const db = require('./db');
 const defaultTemplate = require('./default-template');
@@ -27,6 +29,19 @@ app.use(cookieSession({
   httpOnly: true,
   sameSite: 'lax',
 }));
+
+// Rate limiting on auth endpoints specifically — these are the ones worth
+// protecting against automated password guessing. Deliberately not applied
+// globally: a broad limit would throttle legitimate gameplay traffic
+// (character saves, dice-adjacent reads) for no security benefit.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 FAILED attempts per IP per window — generous for real use, tight for brute force
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // only failures count — a busy household signing up shouldn't trip this
+  message: { error: 'Too many attempts. Try again in a few minutes.' },
+});
 
 function generateInviteCode() {
   const raw = crypto.randomBytes(6).toString('base64url').replace(/[-_]/g, 'x');
@@ -69,7 +84,7 @@ function requireSiteAdmin(req, res, next) {
 // account, a session's own invite code controls which specific campaign(s)
 // they can see — entered from inside the Vault, never at signup.
 
-app.post('/api/signup', (req, res) => {
+app.post('/api/signup', authLimiter, (req, res) => {
   const { signupCode, displayName, password } = req.body || {};
   if (!signupCode || signupCode.trim() !== SIGNUP_CODE.trim()) {
     return res.status(403).json({ error: 'Invalid signup code.' });
@@ -89,7 +104,7 @@ app.post('/api/signup', (req, res) => {
   res.json({ user: { id: info.lastInsertRowid, displayName: name } });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', authLimiter, (req, res) => {
   const { displayName, password } = req.body || {};
   if (!displayName || !password) return res.status(400).json({ error: 'Name and password required.' });
   const user = db.prepare('SELECT * FROM users WHERE display_name = ?').get(displayName.trim());
@@ -318,11 +333,28 @@ app.get('/api/characters/:id', requireAuth, (req, res) => {
   });
 });
 
+const SANITIZE_OPTS = {
+  allowedTags: ['p', 'br', 'b', 'i', 'strong', 'em'],
+  allowedAttributes: {},
+};
+
 app.put('/api/characters/:id', requireAuth, (req, res) => {
   const row = db.prepare('SELECT id FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Character not found, or not yours to edit.' });
   const data = req.body;
   if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Invalid character data.' });
+
+  // Every field that gets rendered via innerHTML client-side (not textContent)
+  // is a stored-XSS vector unless sanitized on the way in. Sanitizing here,
+  // server-side, rather than trusting the client — this is the one chokepoint
+  // every character save passes through, regardless of which page/flow wrote it.
+  if (typeof data.backstoryHTML === 'string') {
+    data.backstoryHTML = sanitizeHtml(data.backstoryHTML, SANITIZE_OPTS);
+  }
+  if (typeof data.subtitle === 'string') {
+    data.subtitle = sanitizeHtml(data.subtitle, SANITIZE_OPTS);
+  }
+
   const name = (data.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
     .run(JSON.stringify(data), name, req.params.id);
