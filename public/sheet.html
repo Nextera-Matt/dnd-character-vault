@@ -157,11 +157,17 @@
   <a href="/vault.html" id="backLink">&larr; My Vault</a>
   <a href="/glossary.html">Glossary</a>
   <button id="exportBtn" style="display:none;">Export JSON</button>
+  <button id="historyBtn" style="display:none;">History</button>
   <span id="moveWrap" style="display:none; align-items:center; gap:0.4rem;">
     <select id="moveSelect" style="background:var(--bg-raised); color:var(--parchment); border:1px solid var(--hairline); font-size:0.75rem; padding:0.3rem;"></select>
     <button id="moveBtn">Move</button>
   </span>
   <span id="saveStatus">loading&hellip;</span>
+</div>
+
+<div id="historyPanel" style="display:none; max-width:760px; margin:0 auto; padding:1rem 1.5rem; border-bottom:1px solid var(--hairline); background:var(--bg-raised);">
+  <div style="font-family:'Cinzel', serif; font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--amber-dim); margin-bottom:0.6rem;">Version History</div>
+  <div id="historyList" style="font-size:0.88rem;"></div>
 </div>
 
 <div id="appRoot" style="display:none;">
@@ -320,6 +326,7 @@ async function init(){
 
   $('appRoot').style.display = 'block';
   $('exportBtn').style.display = 'inline-block';
+  if(isOwner){ $('historyBtn').style.display = 'inline-block'; }
   if(isOwner){ loadMoveOptions(payload.sessionId); }
   renderAll();
   if(!isOwner){ applyReadOnlyLock(); } else { markSaved(); }
@@ -796,6 +803,50 @@ $('exportBtn').addEventListener('click', ()=>{
   a.download = (state.charName || 'character').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.json';
   a.click();
   URL.revokeObjectURL(url);
+});
+
+$('historyBtn').addEventListener('click', async ()=>{
+  const panel = $('historyPanel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  if(!opening) return;
+
+  const list = $('historyList');
+  list.textContent = 'Loading…';
+  const res = await fetch('/api/characters/' + charId + '/versions');
+  const { versions } = await res.json();
+
+  if(!versions.length){
+    list.innerHTML = '<div style="color:var(--parchment-dim); font-style:italic;">No earlier checkpoints yet — one gets saved automatically the first time you make an edit, and roughly every 10 minutes of active editing after that.</div>';
+    return;
+  }
+
+  list.innerHTML = versions.map(v => {
+    const when = new Date(v.savedAt + 'Z').toLocaleString();
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px dotted var(--hairline);">
+      <span>${when}</span>
+      <button class="restore-version-btn" data-id="${v.id}">Restore</button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.restore-version-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Restore the character to this earlier version? Your current state will itself be saved as a checkpoint first, so this can be undone.')) return;
+      const versionId = btn.dataset.id;
+      const restoreRes = await fetch(`/api/characters/${charId}/versions/${versionId}/restore`, { method: 'POST' });
+      const restored = await restoreRes.json();
+      if(!restoreRes.ok){ alert(restored.error || 'Could not restore that version.'); return; }
+      state = restored.data;
+      if(!Array.isArray(state.attacks)) state.attacks = [];
+      if(!Array.isArray(state.slots)){
+        const old = state.slots || { total: 0, used: 0 };
+        state.slots = [{ level: 1, total: old.total || 0, used: old.used || 0 }];
+      }
+      renderAll();
+      panel.style.display = 'none';
+      markSaved();
+    });
+  });
 });
 
 async function loadMoveOptions(currentSessionId){
