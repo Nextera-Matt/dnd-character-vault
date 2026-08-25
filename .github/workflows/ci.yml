@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies
+        working-directory: tests/node_modules_cache
+        run: npm install
+
+      - name: Run test suite
+        run: node --test tests/api.test.js
+
+      - name: Check server.js syntax
+        run: node -c server.js
+
+      - name: Check default-template.js syntax
+        run: node -c default-template.js

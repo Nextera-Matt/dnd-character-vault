@@ -4,3 +4,6 @@ data.sqlite
 data.sqlite-shm
 data.sqlite-wal
 *.log
+tests/node_modules_cache/node_modules/
+tests/node_modules_cache/package-lock.json
+tests/test-data.sqlite
