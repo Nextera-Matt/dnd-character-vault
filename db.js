@@ -46,6 +46,21 @@ CREATE TABLE IF NOT EXISTS characters (
 CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);
 CREATE INDEX IF NOT EXISTS idx_characters_session ON characters(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_members_user ON session_members(user_id);
+
+-- Snapshots of a character's data over time, for undo/version history.
+-- NOT written on every save (the app autosaves on every keystroke — that
+-- would create hundreds of near-identical rows per editing session).
+-- Only snapshotted when the most recent existing version is more than
+-- VERSION_SNAPSHOT_MIN_GAP_MINUTES old (see server.js), so this captures
+-- meaningful checkpoints over a session rather than noise.
+CREATE TABLE IF NOT EXISTS character_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  saved_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_versions_char ON character_versions(character_id);
 `);
 
 module.exports = db;

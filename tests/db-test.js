@@ -36,6 +36,12 @@ function createTestDb(path = ':memory:') {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS character_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+      data TEXT NOT NULL,
+      saved_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return {
     prepare(sql) {

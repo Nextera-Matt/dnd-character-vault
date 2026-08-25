@@ -10,6 +10,10 @@ const db = require('./db');
 const defaultTemplate = require('./default-template');
 
 const app = express();
+// Behind nginx in production — without this, express-rate-limit (and req.ip
+// generally) sees every request as coming from nginx's own address, making
+// the rate limit effectively global across all users instead of per-client.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const SIGNUP_CODE = process.env.SIGNUP_CODE;
@@ -337,9 +341,11 @@ const SANITIZE_OPTS = {
   allowedTags: ['p', 'br', 'b', 'i', 'strong', 'em'],
   allowedAttributes: {},
 };
+const VERSION_SNAPSHOT_MIN_GAP_MINUTES = 10;
+const VERSION_KEEP_MAX = 20;
 
 app.put('/api/characters/:id', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT id FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const row = db.prepare('SELECT id, data FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Character not found, or not yours to edit.' });
   const data = req.body;
   if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Invalid character data.' });
@@ -355,10 +361,54 @@ app.put('/api/characters/:id', requireAuth, (req, res) => {
     data.subtitle = sanitizeHtml(data.subtitle, SANITIZE_OPTS);
   }
 
+  // Snapshot the PRE-edit state for version history — but only if enough
+  // time has passed since the last snapshot. The app autosaves on every
+  // keystroke; snapshotting every save would create hundreds of near-
+  // identical rows per editing session instead of meaningful checkpoints.
+  const lastVersion = db.prepare(
+    'SELECT saved_at FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT 1'
+  ).get(req.params.id);
+  const shouldSnapshot = !lastVersion ||
+    (Date.now() - new Date(lastVersion.saved_at + 'Z').getTime()) > VERSION_SNAPSHOT_MIN_GAP_MINUTES * 60 * 1000;
+  if (shouldSnapshot) {
+    db.prepare('INSERT INTO character_versions (character_id, data) VALUES (?, ?)').run(req.params.id, row.data);
+    const excess = db.prepare(
+      'SELECT id FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT -1 OFFSET ?'
+    ).all(req.params.id, VERSION_KEEP_MAX);
+    excess.forEach(v => db.prepare('DELETE FROM character_versions WHERE id = ?').run(v.id));
+  }
+
   const name = (data.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
     .run(JSON.stringify(data), name, req.params.id);
   res.json({ ok: true, updatedAt: new Date().toISOString() });
+});
+
+app.get('/api/characters/:id/versions', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT id FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!row) return res.status(404).json({ error: 'Character not found, or not yours.' });
+  const versions = db.prepare(
+    'SELECT id, saved_at AS savedAt FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC'
+  ).all(req.params.id);
+  res.json({ versions });
+});
+
+app.post('/api/characters/:id/versions/:versionId/restore', requireAuth, (req, res) => {
+  const charRow = db.prepare('SELECT id, data FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!charRow) return res.status(404).json({ error: 'Character not found, or not yours.' });
+  const version = db.prepare(
+    'SELECT data FROM character_versions WHERE id = ? AND character_id = ?'
+  ).get(req.params.versionId, req.params.id);
+  if (!version) return res.status(404).json({ error: 'Version not found.' });
+
+  // Snapshot the CURRENT state before restoring, so restoring is itself undoable.
+  db.prepare('INSERT INTO character_versions (character_id, data) VALUES (?, ?)').run(req.params.id, charRow.data);
+
+  const restoredData = JSON.parse(version.data);
+  const name = (restoredData.charName || 'Unnamed').slice(0, 80);
+  db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(version.data, name, req.params.id);
+  res.json({ ok: true, data: restoredData });
 });
 
 // Moving a character between sessions is owner-only, and restricted to

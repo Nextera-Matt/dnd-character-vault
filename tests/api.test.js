@@ -353,6 +353,97 @@ test('backstoryHTML and subtitle are sanitized on save — script/event-handler 
   assert.ok(!saved.data.subtitle.includes('onclick'), 'event handler on subtitle should be stripped');
 });
 
+// ---------- Version history ----------
+
+test('the first edit snapshots the pre-edit state, and rapid follow-up edits do not create duplicate snapshots', async () => {
+  const { cookie } = await signup('VersionTester', 'versionpassword1');
+  const sessRes = await fetch(`${BASE}/api/sessions`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ name: 'Version Test Session' }),
+  }));
+  const { id: sessionId } = await sessRes.json();
+  const charRes = await fetch(`${BASE}/api/characters`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ sessionId }),
+  }));
+  const { id: charId, data: originalData } = await charRes.json();
+
+  // First edit: charName changes from the default to "Edited Once".
+  const editedOnce = { ...originalData, charName: 'Edited Once' };
+  await fetch(`${BASE}/api/characters/${charId}`, authed(cookie, { method: 'PUT', body: JSON.stringify(editedOnce) }));
+
+  let versionsRes = await fetch(`${BASE}/api/characters/${charId}/versions`, authed(cookie));
+  let { versions } = await versionsRes.json();
+  assert.equal(versions.length, 1, 'first edit should create exactly one snapshot');
+
+  // Immediately edit again — should NOT create a second snapshot (10-minute throttle).
+  const editedTwice = { ...editedOnce, charName: 'Edited Twice' };
+  await fetch(`${BASE}/api/characters/${charId}`, authed(cookie, { method: 'PUT', body: JSON.stringify(editedTwice) }));
+
+  versionsRes = await fetch(`${BASE}/api/characters/${charId}/versions`, authed(cookie));
+  ({ versions } = await versionsRes.json());
+  assert.equal(versions.length, 1, 'rapid second edit should NOT create another snapshot within the throttle window');
+
+  // The one snapshot that exists should hold the ORIGINAL (pre-first-edit) data, not the edited version.
+  const getRes = await fetch(`${BASE}/api/characters/${charId}`, authed(cookie));
+  const current = await getRes.json();
+  assert.equal(current.data.charName, 'Edited Twice', 'current character data reflects the latest edit');
+});
+
+test('restoring a version reverts the data and creates its own undo snapshot', async () => {
+  const { cookie } = await signup('RestoreTester', 'restorepassword1');
+  const sessRes = await fetch(`${BASE}/api/sessions`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ name: 'Restore Test Session' }),
+  }));
+  const { id: sessionId } = await sessRes.json();
+  const charRes = await fetch(`${BASE}/api/characters`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ sessionId }),
+  }));
+  const { id: charId, data: originalData } = await charRes.json();
+  const originalName = originalData.charName;
+
+  const edited = { ...originalData, charName: 'Renamed Character' };
+  await fetch(`${BASE}/api/characters/${charId}`, authed(cookie, { method: 'PUT', body: JSON.stringify(edited) }));
+
+  const versionsRes = await fetch(`${BASE}/api/characters/${charId}/versions`, authed(cookie));
+  const { versions } = await versionsRes.json();
+  assert.equal(versions.length, 1);
+
+  const restoreRes = await fetch(`${BASE}/api/characters/${charId}/versions/${versions[0].id}/restore`, authed(cookie, { method: 'POST' }));
+  const restored = await restoreRes.json();
+  assert.equal(restoreRes.status, 200);
+  assert.equal(restored.data.charName, originalName, 'restore should bring back the pre-edit name');
+
+  const getRes = await fetch(`${BASE}/api/characters/${charId}`, authed(cookie));
+  const current = await getRes.json();
+  assert.equal(current.data.charName, originalName, 'the character\'s actual saved data should reflect the restore');
+
+  const versionsAfterRes = await fetch(`${BASE}/api/characters/${charId}/versions`, authed(cookie));
+  const { versions: versionsAfter } = await versionsAfterRes.json();
+  assert.equal(versionsAfter.length, 2, 'restoring should itself create a new snapshot (of the renamed state), so the restore is undoable too');
+});
+
+test('a non-owner cannot view or restore another player\'s version history', async () => {
+  const owner = await signup('VersionOwner', 'ownerpassword123');
+  const stranger = await signup('VersionStranger', 'strangerpassword1');
+  const sessRes = await fetch(`${BASE}/api/sessions`, authed(owner.cookie, {
+    method: 'POST', body: JSON.stringify({ name: 'Private Version Session' }),
+  }));
+  const { id: sessionId } = await sessRes.json();
+  const charRes = await fetch(`${BASE}/api/characters`, authed(owner.cookie, {
+    method: 'POST', body: JSON.stringify({ sessionId }),
+  }));
+  const { id: charId } = await charRes.json();
+
+  const blockedRes = await fetch(`${BASE}/api/characters/${charId}/versions`, authed(stranger.cookie));
+  assert.equal(blockedRes.status, 404, 'a non-owner should not even be able to see that version history exists');
+});
+
+// ---------- Rate limiting ----------
+// MUST stay the last test in this file. All tests in this file share one
+// spawned server process, so the rate limiter's in-memory counter persists
+// across tests. This test deliberately exhausts it — anything running after
+// it would inherit an already-tripped limiter and fail for unrelated reasons.
+// (Discovered the hard way: this originally broke 10 unrelated tests before
+// being moved here.)
 test('login is rate-limited after repeated failed attempts from the same client', async () => {
   await signup('RateLimitTarget', 'realpassword123');
   let lastStatus;
