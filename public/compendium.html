@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compendium — Character Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  main{ max-width:820px; margin:0 auto; padding:2rem 1.5rem 4rem; }
+  .tabs{ display:flex; gap:0.5rem; margin-bottom:1.2rem; }
+  .tabs button{ flex:1; padding:0.6rem; font-family:'Cinzel', serif; font-size:0.8rem; letter-spacing:0.08em; text-transform:uppercase; }
+  .tabs button.active{ border-color:var(--amber); color:var(--amber); background:rgba(201,151,60,0.08); }
+  .search-box{ width:100%; background:var(--bg-raised); border:1px solid var(--hairline); padding:0.8rem 1rem; font-size:1rem; margin-bottom:0.6rem; }
+  .filter-row{ display:flex; gap:0.5rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+  .filter-row select{ background:var(--bg-raised); color:var(--parchment); border:1px solid var(--hairline); padding:0.4rem 0.6rem; font-size:0.8rem; }
+  .result-count{ color:var(--parchment-dim); font-size:0.82rem; margin-bottom:1rem; }
+  .entry-card{ border:1px solid var(--hairline); margin-bottom:0.6rem; background:var(--bg-raised); }
+  .entry-head{ padding:0.7rem 1rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+  .entry-head:hover{ background:rgba(201,151,60,0.05); }
+  .entry-name{ font-family:'Cinzel', serif; color:var(--amber); font-size:0.98rem; }
+  .entry-meta{ font-family:'JetBrains Mono', monospace; font-size:0.68rem; color:var(--violet); text-transform:uppercase; letter-spacing:0.04em; }
+  .entry-body{ display:none; padding:0 1rem 1rem; border-top:1px dotted var(--hairline); }
+  .entry-body.open{ display:block; padding-top:0.8rem; }
+  .entry-stats{ font-size:0.78rem; color:var(--parchment-dim); margin-bottom:0.6rem; line-height:1.6; }
+  .entry-stats b{ color:var(--amber-dim); }
+  .entry-desc{ font-size:0.92rem; line-height:1.6; white-space:pre-line; }
+  .attribution{ margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--hairline); font-size:0.72rem; color:var(--parchment-dim); line-height:1.5; }
+  .attribution a{ color:var(--violet); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Character Vault</div>
+  <div class="right"><a href="/vault.html" class="btn">My Vault</a></div>
+</div>
+
+<main>
+  <h1 style="text-align:center; margin-bottom:0.4rem;">Compendium</h1>
+  <p style="text-align:center; color:var(--parchment-dim); font-size:0.88rem; margin-bottom:1.5rem;">Spells and magic items from the SRD 5.2.1</p>
+
+  <div class="tabs">
+    <button id="tabSpells" class="active">Spells</button>
+    <button id="tabItems">Magic Items</button>
+  </div>
+
+  <input class="search-box" id="search" type="text" placeholder="Search by name…">
+  <div class="filter-row" id="spellFilters">
+    <select id="levelFilter"><option value="">Any level</option></select>
+    <select id="classFilter"><option value="">Any class</option></select>
+  </div>
+  <div class="filter-row" id="itemFilters" style="display:none;">
+    <select id="rarityFilter"><option value="">Any rarity</option></select>
+  </div>
+
+  <div class="result-count" id="resultCount"></div>
+  <div id="results"></div>
+
+  <div class="attribution">
+    This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at <a href="https://www.dndbeyond.com/srd" target="_blank">dndbeyond.com/srd</a>. The SRD 5.2.1 is licensed under the <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank">Creative Commons Attribution 4.0 International License</a>.
+  </div>
+</main>
+
+<script>
+let spells = [], items = [], activeTab = 'spells';
+
+async function init(){
+  const [spellsRes, itemsRes] = await Promise.all([fetch('/data/srd-spells.json'), fetch('/data/srd-items.json')]);
+  spells = await spellsRes.json();
+  items = await itemsRes.json();
+
+  const levels = [...new Set(spells.map(s => s.level))].sort((a,b)=>a-b);
+  document.getElementById('levelFilter').innerHTML += levels.map(l => `<option value="${l}">${l===0?'Cantrip':'Level '+l}</option>`).join('');
+  const classes = [...new Set(spells.flatMap(s => s.classes))].sort();
+  document.getElementById('classFilter').innerHTML += classes.map(c => `<option value="${c}">${c}</option>`).join('');
+  const rarities = [...new Set(items.map(i => i.rarity).filter(Boolean))];
+  const order = ['Common','Uncommon','Rare','Very Rare','Legendary','Artifact'];
+  rarities.sort((a,b) => (order.indexOf(a)+1||99) - (order.indexOf(b)+1||99));
+  document.getElementById('rarityFilter').innerHTML += rarities.map(r => `<option value="${r}">${r}</option>`).join('');
+
+  render();
+}
+
+function render(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const results = document.getElementById('results');
+  let list, html;
+
+  if(activeTab === 'spells'){
+    const lvl = document.getElementById('levelFilter').value;
+    const cls = document.getElementById('classFilter').value;
+    list = spells.filter(s =>
+      (!q || s.name.toLowerCase().includes(q)) &&
+      (lvl === '' || s.level === Number(lvl)) &&
+      (cls === '' || s.classes.includes(cls))
+    );
+    html = list.map((s,i) => `
+      <div class="entry-card">
+        <div class="entry-head" data-i="${i}">
+          <span class="entry-name">${s.name}</span>
+          <span class="entry-meta">${s.level===0?'Cantrip':'Lvl '+s.level} · ${s.school}</span>
+        </div>
+        <div class="entry-body" id="body-${i}">
+          <div class="entry-stats">
+            <b>Casting Time:</b> ${s.castingTime} &nbsp;·&nbsp; <b>Range:</b> ${s.range}<br>
+            <b>Components:</b> ${s.components} &nbsp;·&nbsp; <b>Duration:</b> ${s.duration}<br>
+            <b>Classes:</b> ${s.classes.join(', ')}
+          </div>
+          <div class="entry-desc">${escapeHtml(s.description)}</div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    const rar = document.getElementById('rarityFilter').value;
+    list = items.filter(i =>
+      (!q || i.name.toLowerCase().includes(q)) &&
+      (rar === '' || i.rarity === rar)
+    );
+    html = list.map((it,i) => `
+      <div class="entry-card">
+        <div class="entry-head" data-i="${i}">
+          <span class="entry-name">${it.name}</span>
+          <span class="entry-meta">${it.rarity}${it.requiresAttunement ? ' · Attunement' : ''}</span>
+        </div>
+        <div class="entry-body" id="body-${i}">
+          <div class="entry-stats">
+            <b>Type:</b> ${it.type} &nbsp;·&nbsp; <b>Rarity:</b> ${it.rarity}${it.requiresAttunement ? ' (requires attunement)' : ''}
+          </div>
+          <div class="entry-desc">${escapeHtml(it.description)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('resultCount').textContent = `${list.length} result${list.length===1?'':'s'}`;
+  results.innerHTML = html || '<div style="color:var(--parchment-dim); font-style:italic; text-align:center; padding:2rem;">Nothing matches.</div>';
+
+  results.querySelectorAll('.entry-head').forEach(head => {
+    head.addEventListener('click', () => {
+      document.getElementById('body-' + head.dataset.i).classList.toggle('open');
+    });
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  let html = d.innerHTML;
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+  html = html.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+  return html;
+}
+
+document.getElementById('tabSpells').addEventListener('click', () => {
+  activeTab = 'spells';
+  document.getElementById('tabSpells').classList.add('active');
+  document.getElementById('tabItems').classList.remove('active');
+  document.getElementById('spellFilters').style.display = 'flex';
+  document.getElementById('itemFilters').style.display = 'none';
+  document.getElementById('search').value = '';
+  render();
+});
+document.getElementById('tabItems').addEventListener('click', () => {
+  activeTab = 'items';
+  document.getElementById('tabItems').classList.add('active');
+  document.getElementById('tabSpells').classList.remove('active');
+  document.getElementById('itemFilters').style.display = 'flex';
+  document.getElementById('spellFilters').style.display = 'none';
+  document.getElementById('search').value = '';
+  render();
+});
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('levelFilter').addEventListener('change', render);
+document.getElementById('classFilter').addEventListener('change', render);
+document.getElementById('rarityFilter').addEventListener('change', render);
+
+init();
+</script>
+</body>
+</html>

@@ -113,3 +113,13 @@ Not captured even on a supported sheet: spellcasting details (flagged with a war
 - No password-reset flow — a forgotten password currently means a new account
 - No character-edit history/undo
 - No way for a session admin to demote themselves or transfer admin to someone else
+
+## Compendium (spell/item lookup)
+
+`/compendium.html` — searchable spells and magic items, sourced from the official SRD 5.2.1 (2024 rules), released by Wizards of the Coast under CC-BY-4.0. 339 spells, 258 magic items, both with real mechanical detail (casting time, range, components, duration for spells; type, rarity, attunement for items), not just names.
+
+**What's deliberately NOT in here, and why:** only SRD content — non-SRD subclasses, splatbook-exclusive spells/items (Xanathar's, Tasha's, etc.), and any setting/adventure lore (Curse of Strahd's own content included) are copyrighted material outside what WotC has released openly. Adding that would mean reproducing someone else's published text into a redistributable database, which doesn't become permissible by being non-commercial or staying within one group — the SRD boundary is a hard line, not a judgment call made per-use-case. Non-SRD content stays exactly where it already lived before this feature: free-text trait/gear fields you fill in yourself, in your own words, same as Caelric's Shadow Magic traits already work.
+
+Data pulled from [your5e/5e-srd-markdown](https://github.com/your5e/5e-srd-markdown) (a faithful, CC-BY-4.0-sourced markdown conversion of the official PDF) and parsed into JSON via `scripts/build-srd-data.js`. To regenerate after an SRD update: clone that repo somewhere, run `node scripts/build-srd-data.js <path-to-cloned-repo>`, commit the regenerated `public/data/srd-*.json` files.
+
+Required attribution is shown in the page footer, per SRD 5.2.1's CC-BY-4.0 terms.
