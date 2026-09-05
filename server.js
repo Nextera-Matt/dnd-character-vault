@@ -32,6 +32,7 @@ app.use(cookieSession({
   maxAge: 365 * 24 * 60 * 60 * 1000,
   httpOnly: true,
   sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
 }));
 
 // Rate limiting on auth endpoints specifically — these are the ones worth
@@ -121,7 +122,7 @@ app.post('/api/login', authLimiter, (req, res) => {
 
 // Joining a session always requires being signed in already — this is pure
 // session-membership, no account creation happens here anymore.
-app.post('/api/join-session', requireAuth, (req, res) => {
+app.post('/api/join-session', requireAuth, authLimiter, (req, res) => {
   const { inviteCode } = req.body || {};
   if (!inviteCode) return res.status(400).json({ error: 'Invite code required.' });
 
@@ -354,11 +355,26 @@ app.put('/api/characters/:id', requireAuth, (req, res) => {
   // is a stored-XSS vector unless sanitized on the way in. Sanitizing here,
   // server-side, rather than trusting the client — this is the one chokepoint
   // every character save passes through, regardless of which page/flow wrote it.
-  if (typeof data.backstoryHTML === 'string') {
-    data.backstoryHTML = sanitizeHtml(data.backstoryHTML, SANITIZE_OPTS);
+  //
+  // This list was built by actually grepping every innerHTML call site in
+  // sheet.html, not assumed — charName, the quad fields, attacks, skills,
+  // and languages all use textContent or escAttr()+value= already and don't
+  // need this; traits/spell-cards/gear do, and were genuinely missed in an
+  // earlier pass that only covered backstoryHTML and subtitle.
+  const sanitizeField = (obj, key) => { if (obj && typeof obj[key] === 'string') obj[key] = sanitizeHtml(obj[key], SANITIZE_OPTS); };
+
+  sanitizeField(data, 'backstoryHTML');
+  sanitizeField(data, 'subtitle');
+  if (Array.isArray(data.traits)) {
+    data.traits.forEach(t => { sanitizeField(t, 'title'); sanitizeField(t, 'body'); });
   }
-  if (typeof data.subtitle === 'string') {
-    data.subtitle = sanitizeHtml(data.subtitle, SANITIZE_OPTS);
+  ['cantrips', 'prepared'].forEach(key => {
+    if (Array.isArray(data[key])) {
+      data[key].forEach(s => { sanitizeField(s, 'name'); sanitizeField(s, 'tag'); sanitizeField(s, 'info'); });
+    }
+  });
+  if (Array.isArray(data.gear)) {
+    data.gear = data.gear.map(item => typeof item === 'string' ? sanitizeHtml(item, SANITIZE_OPTS) : item);
   }
 
   // Snapshot the PRE-edit state for version history — but only if enough

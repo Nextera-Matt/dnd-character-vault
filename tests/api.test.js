@@ -353,6 +353,35 @@ test('backstoryHTML and subtitle are sanitized on save — script/event-handler 
   assert.ok(!saved.data.subtitle.includes('onclick'), 'event handler on subtitle should be stripped');
 });
 
+test('traits, spell cards, and gear are ALSO sanitized on save — these were missed in an earlier pass and were exploitable through completely normal editing', async () => {
+  const { cookie } = await signup('SecondXavier', 'xavierpassword2');
+  const sessRes = await fetch(`${BASE}/api/sessions`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ name: 'XSS Test Session 2' }),
+  }));
+  const { id: sessionId } = await sessRes.json();
+  const charRes = await fetch(`${BASE}/api/characters`, authed(cookie, {
+    method: 'POST', body: JSON.stringify({ sessionId }),
+  }));
+  const { id: charId, data } = await charRes.json();
+
+  data.traits = [{ title: '<img src=x onerror="evil()">Trait', body: '<script>alert(1)</script>Body text' }];
+  data.cantrips = [{ name: '<script>alert(2)</script>Fire Bolt', tag: '<img src=x onerror="evil()">', info: 'ok' }];
+  data.gear = ['<img src=x onerror="evil()">A Sword', 'Normal Item'];
+
+  await fetch(`${BASE}/api/characters/${charId}`, authed(cookie, { method: 'PUT', body: JSON.stringify(data) }));
+
+  const getRes = await fetch(`${BASE}/api/characters/${charId}`, authed(cookie));
+  const saved = await getRes.json();
+
+  assert.ok(!saved.data.traits[0].title.includes('onerror'), 'trait title event handler should be stripped');
+  assert.ok(!saved.data.traits[0].body.includes('<script>'), 'trait body script tag should be stripped');
+  assert.ok(saved.data.traits[0].title.includes('Trait'), 'legitimate trait title text should survive');
+  assert.ok(!saved.data.cantrips[0].name.includes('<script>'), 'cantrip name script tag should be stripped');
+  assert.ok(!saved.data.cantrips[0].tag.includes('onerror'), 'cantrip tag event handler should be stripped');
+  assert.ok(!saved.data.gear[0].includes('onerror'), 'gear item event handler should be stripped');
+  assert.ok(saved.data.gear[1] === 'Normal Item', 'gear items with no HTML should pass through unchanged');
+});
+
 // ---------- Version history ----------
 
 test('the first edit snapshots the pre-edit state, and rapid follow-up edits do not create duplicate snapshots', async () => {
