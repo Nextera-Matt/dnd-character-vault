@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>(function(){ var t = localStorage.getItem('theme'); if(t) document.documentElement.setAttribute('data-theme', t); })();</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Site Admin — Character Vault</title>
@@ -27,6 +28,7 @@
 <div class="topbar">
   <div class="brand"><span class="shard" style="width:8px;height:8px;"></span>Site Admin</div>
   <div class="right">
+    <span id="themeSwitcherMount"></span>
     <a href="/vault.html" class="btn">My Vault</a>
     <button id="logoutBtn">Sign out</button>
   </div>
@@ -180,5 +182,6 @@ $('logoutBtn').addEventListener('click', async () => {
 
 init();
 </script>
+<script src="/theme-switcher.js"></script>
 </body>
 </html>

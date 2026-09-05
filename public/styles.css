@@ -3,11 +3,41 @@
   --amber:#c9973c; --amber-dim:#8a6b2e; --violet:#5c4a7a; --violet-glow:#3a2f4d;
   --oxide:#7a3030; --hairline:#35302f; --ok:#5c8a5c;
 }
+
+/* Alternate themes — same variable names throughout, so every existing
+   component re-colors automatically. Selected via data-theme on <html>,
+   applied by theme-switcher.js. "Gothic Parchment" (the :root block above)
+   has no data-theme value and is the default. */
+:root[data-theme="erdtree-haze"]{
+  --bg:#15100a; --bg-raised:#1f1810; --parchment:#f2e4c8; --parchment-dim:#b5a488;
+  --amber:#e8b03e; --amber-dim:#8a6423; --violet:#7a5a9a; --violet-glow:#2e2438;
+  --oxide:#7a3030; --hairline:#3a2f1f; --ok:#6b8a4a;
+}
+:root[data-theme="erdtree-bloom"]{
+  --bg:#12140e; --bg-raised:#1a1d14; --parchment:#eef0e0; --parchment-dim:#a4a996;
+  --amber:#d9c869; --amber-dim:#5c6b3a; --violet:#6b5c8a; --violet-glow:#241f30;
+  --oxide:#7a4030; --hairline:#2e321f; --ok:#6b8a4a;
+}
+:root[data-theme="night-sigil"]{
+  --bg:#0a1412; --bg-raised:#101c19; --parchment:#dbe6e2; --parchment-dim:#7a938c;
+  --amber:#e8a33e; --amber-dim:#8a6423; --violet:#2e6b62; --violet-glow:#1f4a44;
+  --oxide:#8a3a2e; --hairline:#1e332e; --ok:#4a8a6b;
+}
+
+/* Atmospheric drift — a slow, subtle shift in the ambient glow position.
+   Applied to every theme (including default) for a bit of living-magic
+   feel, restrained enough not to be distracting during actual use. */
+@keyframes theme-drift{
+  0%,100%{ background-position:50% -10%; }
+  50%{ background-position:48% -7%; }
+}
 *{ box-sizing:border-box; }
 html{ scroll-behavior:smooth; }
 body{
   margin:0; min-height:100vh;
   background:radial-gradient(ellipse 900px 500px at 50% -10%, var(--violet-glow) 0%, transparent 60%), var(--bg);
+  background-size:200% 200%, auto;
+  animation:theme-drift 16s ease-in-out infinite;
   color:var(--parchment); font-family:'EB Garamond', serif; font-size:18px; line-height:1.65;
   -webkit-font-smoothing:antialiased;
 }

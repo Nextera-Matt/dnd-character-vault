@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>(function(){ var t = localStorage.getItem('theme'); if(t) document.documentElement.setAttribute('data-theme', t); })();</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Character Sheet — Character Vault</title>
@@ -157,6 +158,7 @@
   <a href="/vault.html" id="backLink">&larr; My Vault</a>
   <a href="/compendium.html">Compendium</a>
   <a href="/glossary.html">Glossary</a>
+  <span id="themeSwitcherMount"></span>
   <button id="exportBtn" style="display:none;">Export JSON</button>
   <button id="historyBtn" style="display:none;">History</button>
   <span id="moveWrap" style="display:none; align-items:center; gap:0.4rem;">
@@ -901,5 +903,6 @@ document.addEventListener('click', e=>{
   saveState();
 });
 </script>
+<script src="/theme-switcher.js"></script>
 </body>
 </html>
