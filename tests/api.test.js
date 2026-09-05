@@ -18,6 +18,9 @@ const BASE = `http://localhost:${PORT}`;
 
 let serverProcess;
 let testDir;
+let bootstrapAdminCookie; // the id=1 admin, created once in before() — other
+                          // tests that need "some admin session" reuse this
+                          // rather than each fragilely trying to be first.
 
 function waitForServer(url, timeoutMs = 5000) {
   const start = Date.now();
@@ -68,6 +71,13 @@ test.before(async () => {
   serverProcess.stderr.on('data', d => process.stderr.write(`[server] ${d}`));
 
   await waitForServer(`${BASE}/api/me`).catch(() => {}); // /api/me 401s but proves server is up
+
+  // Bootstrap the id=1 admin ONCE here, shared by any test that needs "some
+  // admin session" to work with. Doing this per-test instead would only
+  // work for whichever ONE test happened to run first in the file — every
+  // test after that would find id=1 already taken.
+  const bootstrap = await signup('TestSuiteBootstrapAdmin', 'bootstrappassword1');
+  bootstrapAdminCookie = bootstrap.cookie;
 });
 
 test.after(() => {
@@ -93,6 +103,25 @@ function authed(cookie, opts = {}) {
 }
 
 // ---------- Auth ----------
+
+test('the bootstrap admin (id=1) has real admin access; a LATER signup with the old SITE_ADMIN_NAME value gets nothing', async () => {
+  // Proves the actual fix: the old behavior was "whoever's name matches
+  // SITE_ADMIN_NAME is admin", which meant deleting the admin and having
+  // anyone else sign up with that exact name would silently hand them
+  // admin too. Now admin is tied to being id=1 specifically — a one-time
+  // historical fact (the bootstrap admin created in before()) that can
+  // never be true again for a later signup, regardless of name.
+  const bootstrapMe = await (await fetch(`${BASE}/api/me`, authed(bootstrapAdminCookie))).json();
+  assert.equal(bootstrapMe.user.isSiteAdmin, true, 'the bootstrap (id=1) admin should be a real admin');
+  const allowedRes = await fetch(`${BASE}/api/admin/overview`, authed(bootstrapAdminCookie));
+  assert.equal(allowedRes.status, 200);
+
+  const impostor = await signup('SiteAdminUser', 'impostorpass123'); // matches legacy SITE_ADMIN_NAME on purpose
+  const impostorMe = await (await fetch(`${BASE}/api/me`, authed(impostor.cookie))).json();
+  assert.equal(impostorMe.user.isSiteAdmin, false, 'a later signup matching the old env var name should get nothing');
+  const blockedRes = await fetch(`${BASE}/api/admin/overview`, authed(impostor.cookie));
+  assert.equal(blockedRes.status, 403);
+});
 
 test('signup fails with wrong signup code', async () => {
   const { res, body } = await signup('WrongCodeUser', 'password123', 'not-the-real-code');
@@ -298,32 +327,71 @@ test('cannot move a character into a session you are not a member of (would self
 
 // ---------- Site admin ----------
 
-test('site admin is determined by SITE_ADMIN_NAME, not signup order', async () => {
-  // "SiteAdminUser" is configured as SITE_ADMIN_NAME in the test .env above.
-  // Sign up a regular user FIRST to prove order doesn't matter.
-  const regular = await signup('RegularFirstUser', 'regularpassword1');
-  const admin = await signup('SiteAdminUser', 'adminpassword123');
+test('an existing admin can promote another user, and that user then has real admin access', async () => {
+  const target = await signup('SoonToBeAdmin', 'targetpassword1');
 
-  const regularMe = await (await fetch(`${BASE}/api/me`, authed(regular.cookie))).json();
-  const adminMe = await (await fetch(`${BASE}/api/me`, authed(admin.cookie))).json();
+  const beforeMe = await (await fetch(`${BASE}/api/me`, authed(target.cookie))).json();
+  assert.equal(beforeMe.user.isSiteAdmin, false);
 
-  assert.equal(regularMe.user.isSiteAdmin, false);
-  assert.equal(adminMe.user.isSiteAdmin, true);
+  const promoteRes = await fetch(`${BASE}/api/admin/users/${beforeMe.user.id}/promote`, authed(bootstrapAdminCookie, { method: 'POST' }));
+  assert.equal(promoteRes.status, 200);
 
-  const blockedRes = await fetch(`${BASE}/api/admin/overview`, authed(regular.cookie));
-  assert.equal(blockedRes.status, 403);
+  const afterMe = await (await fetch(`${BASE}/api/me`, authed(target.cookie))).json();
+  assert.equal(afterMe.user.isSiteAdmin, true, 'promoted user should now show as admin');
 
-  const allowedRes = await fetch(`${BASE}/api/admin/overview`, authed(admin.cookie));
-  assert.equal(allowedRes.status, 200);
+  const nowAllowedRes = await fetch(`${BASE}/api/admin/overview`, authed(target.cookie));
+  assert.equal(nowAllowedRes.status, 200, 'promoted user should have real admin API access, not just the flag');
+});
+
+test('a non-admin cannot promote themselves or anyone else', async () => {
+  const regular = await signup('CannotPromote', 'regularpass123');
+  const target = await signup('PromotionTarget', 'targetpass1234');
+  const res = await fetch(`${BASE}/api/admin/users/${target.body.user.id}/promote`, authed(regular.cookie, { method: 'POST' }));
+  assert.equal(res.status, 403);
 });
 
 test('site admin cannot delete their own account via the admin endpoint', async () => {
-  const { cookie } = await signup('SiteAdminUser2', 'adminpassword123');
-  // Note: SITE_ADMIN_NAME is fixed to 'SiteAdminUser' for this test run,
-  // so this user is a regular user — test the self-delete guard using a
-  // fresh site-admin-named signup instead within its own isolated check.
-  const res = await fetch(`${BASE}/api/admin/users/99999`, authed(cookie, { method: 'DELETE' }));
-  assert.equal(res.status, 403, 'non-admin should be blocked before self-delete logic is even reached');
+  // Uses a fresh admin (promoted via the shared bootstrap) rather than
+  // bootstrap itself, so this test doesn't affect bootstrapAdminCookie's
+  // own standing for any other test.
+  const fresh = await signup('SelfDeleteTestAdmin', 'adminpassword123');
+  await fetch(`${BASE}/api/admin/users/${fresh.body.user.id}/promote`, authed(bootstrapAdminCookie, { method: 'POST' }));
+  const res = await fetch(`${BASE}/api/admin/users/${fresh.body.user.id}`, authed(fresh.cookie, { method: 'DELETE' }));
+  assert.equal(res.status, 400, 'an admin should be blocked from deleting their own account');
+});
+
+// This test MUST run after every other test above that relies on
+// bootstrapAdminCookie holding real admin rights — it's the only one that
+// actually changes the bootstrap admin's own role (demoting it down to
+// 'player' as part of proving the lockout boundary), so anything relying
+// on bootstrapAdminCookie staying an admin needs to run before this point.
+test('cannot demote the last remaining site admin — lockout protection', async () => {
+  // Earlier tests (promote, self-delete) each create a site_admin and never
+  // clean it up — that's fine for those tests, but this one needs to know
+  // the EXACT global admin count to test the boundary correctly. Demote
+  // every admin except bootstrap first, to get to a known starting point.
+  const overview = await (await fetch(`${BASE}/api/admin/overview`, authed(bootstrapAdminCookie))).json();
+  const bootstrapId = (await (await fetch(`${BASE}/api/me`, authed(bootstrapAdminCookie))).json()).user.id;
+  for (const u of overview.users) {
+    if (u.role === 'site_admin' && u.id !== bootstrapId) {
+      await fetch(`${BASE}/api/admin/users/${u.id}/demote`, authed(bootstrapAdminCookie, { method: 'POST' }));
+    }
+  }
+
+  const second = await signup('LockoutTestSecondAdmin', 'lockoutpassword1');
+  const secondMe = await (await fetch(`${BASE}/api/me`, authed(second.cookie))).json();
+  await fetch(`${BASE}/api/admin/users/${secondMe.user.id}/promote`, authed(bootstrapAdminCookie, { method: 'POST' }));
+
+  // Exactly two admins now exist (bootstrap + second) — demoting one should
+  // succeed, proving the block is specifically about being the LAST one,
+  // not a blanket "can never demote an admin" rule.
+  const demoteBootstrapRes = await fetch(`${BASE}/api/admin/users/${bootstrapId}/demote`, authed(second.cookie, { method: 'POST' }));
+  assert.equal(demoteBootstrapRes.status, 200, 'demoting one of two admins should succeed');
+
+  // "second" is now the sole remaining admin — demoting them, even by
+  // themselves, should be blocked.
+  const selfDemoteRes = await fetch(`${BASE}/api/admin/users/${secondMe.user.id}/demote`, authed(second.cookie, { method: 'POST' }));
+  assert.equal(selfDemoteRes.status, 400, 'demoting the last remaining admin should be blocked');
 });
 
 // ---------- Security ----------

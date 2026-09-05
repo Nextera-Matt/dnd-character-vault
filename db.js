@@ -12,6 +12,38 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+`);
+
+// Role-based site admin — replaces the old "whoever's display_name matches
+// SITE_ADMIN_NAME" check, which had a real flaw: if that account were ever
+// deleted, the next person to sign up with that exact name would silently
+// become site admin. A role column tied to a specific user's id can't be
+// re-acquired that way. ALTER TABLE ADD COLUMN has no "IF NOT EXISTS" in
+// SQLite, so check the schema first — this needs to run safely every time
+// the app starts, not just on a fresh database.
+const userColumns = db.prepare("PRAGMA table_info(users)").all();
+if (!userColumns.some(c => c.name === 'role')) {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'");
+}
+
+// One-time bootstrap: if no one holds the site_admin role yet (either a
+// fresh install, or the first run after this migration), and the old
+// SITE_ADMIN_NAME env var is still set, promote whichever account currently
+// matches it — preserves whoever was already the de facto admin, so this
+// transition doesn't lock anyone out. After this runs once, the role column
+// is the only thing that matters; SITE_ADMIN_NAME becomes inert.
+{
+  const hasAdmin = db.prepare("SELECT 1 FROM users WHERE role = 'site_admin'").get();
+  if (!hasAdmin && process.env.SITE_ADMIN_NAME) {
+    const candidate = db.prepare('SELECT id FROM users WHERE display_name = ?').get(process.env.SITE_ADMIN_NAME);
+    if (candidate) {
+      db.prepare("UPDATE users SET role = 'site_admin' WHERE id = ?").run(candidate.id);
+      console.log(`One-time migration: promoted "${process.env.SITE_ADMIN_NAME}" to site_admin role.`);
+    }
+  }
+}
+
+db.exec(`
 
 -- A session is one campaign/table (e.g. "Curse of Strahd -- Tuesdays").
 -- created_by is nullable so a bootstrap session can exist before any user

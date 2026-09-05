@@ -17,7 +17,10 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const SIGNUP_CODE = process.env.SIGNUP_CODE;
-const SITE_ADMIN_NAME = process.env.SITE_ADMIN_NAME || null;
+// Note: SITE_ADMIN_NAME still exists as an env var, but only db.js reads it
+// now — for the one-time migration that promotes a pre-existing account to
+// the site_admin role the first time this version runs. After that, role is
+// the only thing that matters; this name-matching mechanism is retired.
 const MAX_CHARACTERS_PER_SESSION = Number(process.env.MAX_CHARACTERS_PER_SESSION) || 6;
 
 if (!SESSION_SECRET || !SIGNUP_CODE) {
@@ -57,7 +60,7 @@ function requireAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Not signed in.' });
   }
-  const user = db.prepare('SELECT id, display_name FROM users WHERE id = ?').get(req.session.userId);
+  const user = db.prepare('SELECT id, display_name, role FROM users WHERE id = ?').get(req.session.userId);
   if (!user) {
     req.session = null;
     return res.status(401).json({ error: 'Session no longer valid.' });
@@ -74,7 +77,7 @@ function isSessionAdmin(sessionId, userId) {
   return !!s && s.created_by === userId;
 }
 function isSiteAdmin(user) {
-  return !!SITE_ADMIN_NAME && user.display_name === SITE_ADMIN_NAME;
+  return user.role === 'site_admin';
 }
 function requireSiteAdmin(req, res, next) {
   if (!isSiteAdmin(req.user)) return res.status(403).json({ error: 'Site admin only.' });
@@ -105,6 +108,16 @@ app.post('/api/signup', authLimiter, (req, res) => {
 
   const hash = bcrypt.hashSync(password, 10);
   const info = db.prepare('INSERT INTO users (display_name, password_hash) VALUES (?, ?)').run(name, hash);
+
+  // The very first account ever created on this server becomes site admin
+  // automatically. Safe in a way name-matching wasn't: id=1 can only ever
+  // be true once in this table's entire history (AUTOINCREMENT never
+  // reuses ids, even after deletion), so this can't be retriggered later
+  // by someone signing up with a particular name.
+  if (info.lastInsertRowid === 1) {
+    db.prepare("UPDATE users SET role = 'site_admin' WHERE id = 1").run();
+  }
+
   req.session.userId = info.lastInsertRowid;
   res.json({ user: { id: info.lastInsertRowid, displayName: name } });
 });
@@ -143,10 +156,10 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ user: { id: req.user.id, displayName: req.user.display_name, isSiteAdmin: isSiteAdmin(req.user) } });
 });
 
-// ---------- Site Admin (whoever's account is oldest on the whole server) ----------
+// ---------- Site Admin (role-based — see the "role" column on users) ----------
 
 app.get('/api/admin/overview', requireAuth, requireSiteAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, display_name AS displayName, created_at AS createdAt FROM users ORDER BY id ASC').all();
+  const users = db.prepare('SELECT id, display_name AS displayName, role, created_at AS createdAt FROM users ORDER BY id ASC').all();
   const sessions = db.prepare(`
     SELECT s.id, s.name, s.invite_code AS inviteCode, s.created_by AS createdBy, u.display_name AS adminName,
       (SELECT COUNT(*) FROM session_members sm WHERE sm.session_id = s.id) AS memberCount,
@@ -159,13 +172,36 @@ app.get('/api/admin/overview', requireAuth, requireSiteAdmin, (req, res) => {
     FROM characters c JOIN users u ON u.id = c.user_id JOIN sessions s ON s.id = c.session_id
     ORDER BY c.updated_at DESC
   `).all();
-  const adminUser = users.find(u => u.displayName === SITE_ADMIN_NAME);
-  res.json({ users, sessions, characters, siteAdminId: adminUser ? adminUser.id : null });
+  res.json({ users, sessions, characters });
+});
+
+app.post('/api/admin/users/:id/promote', requireAuth, requireSiteAdmin, (req, res) => {
+  const info = db.prepare("UPDATE users SET role = 'site_admin' WHERE id = ?").run(req.params.id);
+  if (info.changes === 0) return res.status(404).json({ error: 'User not found.' });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/users/:id/demote', requireAuth, requireSiteAdmin, (req, res) => {
+  const targetId = Number(req.params.id);
+  const adminCount = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'site_admin'").get().n;
+  const target = db.prepare('SELECT role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+  if (target.role === 'site_admin' && adminCount <= 1) {
+    return res.status(400).json({ error: "Can't remove the last site admin — promote someone else first." });
+  }
+  db.prepare("UPDATE users SET role = 'player' WHERE id = ?").run(targetId);
+  res.json({ ok: true });
 });
 
 app.delete('/api/admin/users/:id', requireAuth, requireSiteAdmin, (req, res) => {
   const targetId = Number(req.params.id);
   if (targetId === req.user.id) return res.status(400).json({ error: "You can't delete your own account from here." });
+  const target = db.prepare('SELECT role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'User not found.' });
+  if (target.role === 'site_admin') {
+    const adminCount = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'site_admin'").get().n;
+    if (adminCount <= 1) return res.status(400).json({ error: "Can't delete the last site admin — promote someone else first." });
+  }
   const info = db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
   if (info.changes === 0) return res.status(404).json({ error: 'User not found.' });
   res.json({ ok: true });

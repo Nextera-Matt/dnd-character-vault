@@ -12,6 +12,7 @@ function createTestDb(path = ':memory:') {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       display_name TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'player',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS sessions (

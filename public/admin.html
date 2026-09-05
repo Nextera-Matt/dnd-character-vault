@@ -73,26 +73,29 @@ async function init(){
 async function load(){
   const res = await fetch('/api/admin/overview');
   const data = await res.json();
-  renderUsers(data.users, data.siteAdminId);
+  renderUsers(data.users);
   renderSessions(data.sessions);
   renderChars(data.characters);
 }
 
-function renderUsers(users, siteAdminId){
+function renderUsers(users){
   const body = $('usersBody');
   body.innerHTML = '';
   if(!users.length){ body.innerHTML = '<tr class="empty-row"><td colspan="4">No users.</td></tr>'; return; }
+  const adminCount = users.filter(u => u.role === 'site_admin').length;
   users.forEach(u => {
+    const isAdmin = u.role === 'site_admin';
     const tr = document.createElement('tr');
     const joined = new Date(u.createdAt + 'Z').toLocaleDateString();
     tr.innerHTML = `
       <td>${escapeHTML(u.displayName)}</td>
       <td>${joined}</td>
-      <td>${u.id === siteAdminId ? '<span class="site-admin-tag">SITE ADMIN</span>' : ''}</td>
+      <td>${isAdmin ? '<span class="site-admin-tag">SITE ADMIN</span>' : ''}</td>
       <td class="row-actions">
         <button class="rename">Rename</button>
         <button class="reset">Reset Password</button>
-        ${u.id === siteAdminId ? '' : '<button class="danger del">Delete</button>'}
+        ${isAdmin ? '<button class="demote">Remove Admin</button>' : '<button class="promote">Make Admin</button>'}
+        ${isAdmin ? '' : '<button class="danger del">Delete</button>'}
       </td>
     `;
     tr.querySelector('.rename').addEventListener('click', async () => {
@@ -111,11 +114,33 @@ function renderUsers(users, siteAdminId){
       if(!res.ok){ alert(d.error); return; }
       alert('Password reset for ' + u.displayName + '.');
     });
+    const promoteBtn = tr.querySelector('.promote');
+    if(promoteBtn){
+      promoteBtn.addEventListener('click', async () => {
+        if(!confirm(`Make ${u.displayName} a site admin? They'll be able to see and manage every user, session, and character on the server.`)) return;
+        const res = await fetch('/api/admin/users/' + u.id + '/promote', { method:'POST' });
+        const d = await res.json();
+        if(!res.ok){ alert(d.error); return; }
+        load();
+      });
+    }
+    const demoteBtn = tr.querySelector('.demote');
+    if(demoteBtn){
+      demoteBtn.addEventListener('click', async () => {
+        if(!confirm(`Remove site admin from ${u.displayName}?`)) return;
+        const res = await fetch('/api/admin/users/' + u.id + '/demote', { method:'POST' });
+        const d = await res.json();
+        if(!res.ok){ alert(d.error); return; }
+        load();
+      });
+    }
     const delBtn = tr.querySelector('.del');
     if(delBtn){
       delBtn.addEventListener('click', async () => {
         if(!confirm(`Delete ${u.displayName}'s account entirely? This removes their session memberships and every character they own. Cannot be undone.`)) return;
-        await fetch('/api/admin/users/' + u.id, { method:'DELETE' });
+        const res = await fetch('/api/admin/users/' + u.id, { method:'DELETE' });
+        const d = await res.json().catch(() => ({}));
+        if(!res.ok){ alert(d.error || 'Could not delete that account.'); return; }
         load();
       });
     }
