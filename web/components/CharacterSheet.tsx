@@ -12,11 +12,15 @@ import {
   LANGUAGE_LIST,
   SKILL_LIST,
   WEAPON_LIST,
+  derivedInit,
+  derivedSkillVal,
   fmtMod,
+  initIsAuto,
   mod,
   normalizeSlots,
   ordinal,
   parseModifier,
+  skillIsAuto,
 } from "@/lib/sheet";
 import type { Attack, CharacterData, CharacterPayload, SessionSummary, SpellCard } from "@/lib/types";
 
@@ -30,11 +34,14 @@ export default function CharacterSheet({ charId }: { charId: string }) {
   const [versions, setVersions] = useState<{ id: number; savedAt: string }[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [moveTo, setMoveTo] = useState("");
+  const [mode, setMode] = useState<"chronicle" | "table">("chronicle");
+  const [page, setPage] = useState("vitals");
   const dice = useRef<DiceHandle | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const stateRef = useRef<CharacterData | null>(null);
   const ownerRef = useRef(true);
+  const updatedAtRef = useRef("");
 
   useEffect(() => {
     stateRef.current = state;
@@ -64,9 +71,27 @@ export default function CharacterSheet({ charId }: { charId: string }) {
     }
     inFlight.current = true;
     try {
-      await api(`/api/characters/${charId}`, { method: "PUT", body: JSON.stringify(data) });
+      const saved = await api<{ ok: boolean; updatedAt: string }>(`/api/characters/${charId}`, {
+        method: "PUT",
+        headers: updatedAtRef.current ? { "If-Match": updatedAtRef.current } : undefined,
+        body: JSON.stringify(data),
+      });
+      if (saved.updatedAt) updatedAtRef.current = saved.updatedAt;
       setSaveLabel("saved");
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setSaveLabel("saved elsewhere — reloading");
+        try {
+          const p = await api<CharacterPayload>(`/api/characters/${charId}`);
+          updatedAtRef.current = p.updatedAt;
+          setPayload(p);
+          setState({ ...p.data, attacks: p.data.attacks || [], slots: normalizeSlots(p.data.slots) });
+          setSaveLabel("reloaded");
+        } catch {
+          setSaveLabel("conflict — reload the page");
+        }
+        return;
+      }
       setSaveLabel("save failed — retrying");
       saveTimer.current = setTimeout(() => void doSave(stateRef.current || data), 2000);
     } finally {
@@ -88,6 +113,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
         if (cancelled) return;
         const data = { ...p.data, attacks: p.data.attacks || [], slots: normalizeSlots(p.data.slots) };
         ownerRef.current = p.isOwner;
+        updatedAtRef.current = p.updatedAt;
         setPayload(p);
         setState(data);
         setSaveLabel(p.isOwner ? "saved" : "");
@@ -107,6 +133,11 @@ export default function CharacterSheet({ charId }: { charId: string }) {
       cancelled = true;
     };
   }, [charId, router]);
+
+  useEffect(() => {
+    const fromHash = window.location.hash.replace("#", "");
+    if (["vitals", "attacks", "spells", "gear", "story"].includes(fromHash)) setPage(fromHash);
+  }, []);
 
   if (error) return <p className="text-center text-[var(--danger)] py-20">{error}</p>;
   if (!state || !payload) return <p className="text-center text-[var(--ink-dim)] py-20">Loading…</p>;
@@ -195,6 +226,13 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           </span>
         ) : null}
         <span className="font-[family-name:var(--font-mono)] text-[0.68rem] text-[var(--ink-dim)]">{saveLabel}</span>
+        <button
+          type="button"
+          className={`btn ${mode === "table" ? "btn-primary" : ""}`}
+          onClick={() => setMode(mode === "table" ? "chronicle" : "table")}
+        >
+          {mode === "table" ? "Chronicle" : "At the table"}
+        </button>
       </nav>
 
       {!isOwner ? (
@@ -236,6 +274,12 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                       slots: normalizeSlots(restored.data.slots),
                     };
                     setState(data);
+                    try {
+                      const fresh = await api<CharacterPayload>(`/api/characters/${charId}`);
+                      updatedAtRef.current = fresh.updatedAt;
+                    } catch {
+                      updatedAtRef.current = "";
+                    }
                     setHistoryOpen(false);
                     setSaveLabel("saved");
                   }}
@@ -248,45 +292,91 @@ export default function CharacterSheet({ charId }: { charId: string }) {
         </div>
       ) : null}
 
-      <header className="text-center pt-14 pb-8 px-6 relative overflow-hidden">
+      <header className={`text-center pt-14 pb-8 px-6 relative overflow-hidden ${mode === "table" ? "pt-8 pb-4" : ""}`}>
         <h1 className="font-[family-name:var(--font-cinzel)] text-[clamp(2rem,6vw,3rem)] text-[var(--gold)]">
           <span
             className="inline-block min-w-[200px] outline-none"
             contentEditable={isOwner}
             suppressContentEditableWarning
+            aria-label="Character name"
             onInput={(e) => patch((d) => { d.charName = e.currentTarget.textContent || ""; })}
           >
             {state.charName}
           </span>
         </h1>
+        {mode === "chronicle" ? (
         <div
           className="mt-2 italic text-[var(--ink-dim)] text-[1.1rem] outline-none"
           contentEditable={isOwner}
           suppressContentEditableWarning
+          aria-label="Character subtitle"
           dangerouslySetInnerHTML={{ __html: state.subtitle }}
           onInput={(e) => patch((d) => { d.subtitle = e.currentTarget.innerHTML; })}
         />
-        <div className="flex justify-center flex-wrap max-w-[640px] mx-auto mt-8 border border-[var(--hairline)] bg-[var(--bg-raised)]">
-          <Vital label="AC" disabled={!isOwner} value={state.vitals.ac} onChange={(n) => patch((d) => { d.vitals.ac = n; })} />
-          <div className="flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)]">
-            <div className="font-[family-name:var(--font-mono)] text-[1.6rem] flex justify-center gap-1">
-              <input className="w-10 text-center ghost-input" type="number" disabled={!isOwner} value={state.vitals.hpCur} onChange={(e) => patch((d) => { d.vitals.hpCur = Number(e.target.value) || 0; })} />
+        ) : null}
+        <div className={`flex justify-center flex-wrap max-w-[640px] mx-auto mt-8 border border-[var(--hairline)] bg-[var(--bg-raised)] ${mode === "table" ? "max-w-[920px] mt-4" : ""}`}>
+          <Vital label="AC" disabled={!isOwner} value={state.vitals.ac} onChange={(n) => patch((d) => { d.vitals.ac = n; })} huge={mode === "table"} />
+          <div className={`flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)] ${mode === "table" ? "min-w-[160px] py-6" : ""}`}>
+            <div className={`font-[family-name:var(--font-mono)] flex justify-center gap-1 ${mode === "table" ? "text-5xl" : "text-[1.6rem]"}`}>
+              <input className={`${mode === "table" ? "w-20" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Current HP" value={state.vitals.hpCur} onChange={(e) => patch((d) => { d.vitals.hpCur = Number(e.target.value) || 0; })} />
               /
-              <input className="w-10 text-center ghost-input" type="number" disabled={!isOwner} value={state.vitals.hpMax} onChange={(e) => patch((d) => { d.vitals.hpMax = Number(e.target.value) || 0; })} />
+              <input className={`${mode === "table" ? "w-20" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Max HP" value={state.vitals.hpMax} onChange={(e) => patch((d) => { d.vitals.hpMax = Number(e.target.value) || 0; })} />
             </div>
             <div className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase text-[var(--gold-dim)]">HP</div>
           </div>
-          <Vital label="Speed" disabled={!isOwner} value={state.vitals.speed} onChange={(n) => patch((d) => { d.vitals.speed = n; })} />
-          <div className="flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)]">
-            <input className="font-[family-name:var(--font-mono)] text-[1.6rem] text-center ghost-input" disabled={!isOwner} value={state.vitals.init} onChange={(e) => patch((d) => { d.vitals.init = e.target.value; })} />
+          <Vital label="Speed" disabled={!isOwner} value={state.vitals.speed} onChange={(n) => patch((d) => { d.vitals.speed = n; })} huge={mode === "table"} />
+          <div className={`flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)] ${mode === "table" ? "min-w-[140px] py-6" : ""}`}>
+            <input
+              className={`font-[family-name:var(--font-mono)] text-center ghost-input ${mode === "table" ? "text-4xl" : "text-[1.6rem]"}`}
+              disabled={!isOwner || initIsAuto(state.vitals)}
+              aria-label="Initiative"
+              value={initIsAuto(state.vitals) ? derivedInit(state.abilities) : state.vitals.init}
+              onChange={(e) => patch((d) => { d.vitals.init = e.target.value; })}
+            />
             <div className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase text-[var(--gold-dim)]">Init</div>
+            {isOwner ? (
+              <label className="block text-[0.62rem] text-[var(--ink-dim)] mt-1">
+                <input
+                  type="checkbox"
+                  className="mr-1"
+                  checked={initIsAuto(state.vitals)}
+                  onChange={(e) =>
+                    patch((d) => {
+                      d.vitals.initOverride = !e.target.checked;
+                      if (e.target.checked) d.vitals.init = derivedInit(d.abilities);
+                    })
+                  }
+                />
+                Auto
+              </label>
+            ) : null}
           </div>
-          <Vital last label="Prof" disabled={!isOwner} value={state.vitals.prof} onChange={(n) => patch((d) => { d.vitals.prof = n; })} />
+          <Vital last label="Prof" disabled={!isOwner} value={state.vitals.prof} onChange={(n) => patch((d) => { d.vitals.prof = n; })} huge={mode === "table"} />
         </div>
       </header>
 
-      <main className="max-w-[760px] mx-auto px-6 pb-24">
-        <section className="py-12 border-b border-[var(--hairline)]">
+      <main className={`max-w-[760px] mx-auto px-6 pb-24 ${mode === "table" ? "max-w-[920px] table-hud" : "book-stage"}`}>
+        {mode === "chronicle" ? (
+          <div className="flex flex-wrap justify-center gap-2 mb-4">
+            {[
+              ["vitals", "I. Vitals"],
+              ["attacks", "II. Combat"],
+              ["spells", "III. Spells"],
+              ["gear", "IV. Gear"],
+              ["story", "V. Journal"],
+            ].map(([id, label]) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                className={`btn ${page === id ? "btn-primary" : ""}`}
+                onClick={() => setPage(id)}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        ) : null}
+        <section id="vitals" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "vitals" ? "book-page-hidden" : ""}`}>
           <Eyebrow>I. Vitals & Traits</Eyebrow>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Body & Bearing</h2>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-3 mb-8">
@@ -331,7 +421,10 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <h3 className="font-[family-name:var(--font-cinzel)] text-[var(--gold)] mb-2">Skills</h3>
-              {state.skills.map((sk, i) => (
+              {state.skills.map((sk, i) => {
+                const auto = skillIsAuto(sk);
+                const shown = auto ? derivedSkillVal(state.abilities, state.vitals.prof, sk) : sk.val;
+                return (
                 <div key={i} className="flex items-center gap-2 py-1 border-b border-dotted border-[var(--hairline)]">
                   <AutocompleteInput
                     value={sk.name}
@@ -339,13 +432,39 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                     className="ghost-input flex-1"
                     onChange={(v) => patch((d) => { d.skills[i].name = v; })}
                   />
+                  <label className="text-[0.62rem] text-[var(--ink-dim)] whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      className="mr-1"
+                      disabled={!isOwner}
+                      checked={!!sk.proficient}
+                      onChange={(e) => patch((d) => { d.skills[i].proficient = e.target.checked; })}
+                    />
+                    Prof
+                  </label>
                   <input
                     className="w-12 text-right font-[family-name:var(--font-mono)] ghost-input"
-                    disabled={!isOwner}
-                    value={sk.val}
+                    disabled={!isOwner || auto}
+                    aria-label={`${sk.name} bonus`}
+                    value={shown}
                     onChange={(e) => patch((d) => { d.skills[i].val = e.target.value; })}
                   />
-                  <button type="button" className="btn text-[0.68rem] px-1 py-0.5" onClick={() => dice.current?.rollD20(parseModifier(sk.val), sk.name)}>
+                  <label className="text-[0.62rem] text-[var(--ink-dim)] whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      className="mr-1"
+                      disabled={!isOwner}
+                      checked={auto}
+                      onChange={(e) =>
+                        patch((d) => {
+                          d.skills[i].override = !e.target.checked;
+                          if (e.target.checked) d.skills[i].val = derivedSkillVal(d.abilities, d.vitals.prof, d.skills[i]);
+                        })
+                      }
+                    />
+                    Auto
+                  </label>
+                  <button type="button" className="btn text-[0.68rem] px-1 py-0.5" onClick={() => dice.current?.rollD20(parseModifier(shown), sk.name)}>
                     Roll
                   </button>
                   {isOwner ? (
@@ -354,9 +473,12 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                     </button>
                   ) : null}
                 </div>
+                );
+              })}
+                </div>
               ))}
               {isOwner ? (
-                <button type="button" className="btn w-full mt-2 border-dashed" onClick={() => patch((d) => { d.skills.push({ name: "New Skill", val: "+0" }); })}>
+                <button type="button" className="btn w-full mt-2 border-dashed" onClick={() => patch((d) => { d.skills.push({ name: "New Skill", val: "+0", proficient: false, override: false }); })}>
                   + Add skill
                 </button>
               ) : null}
@@ -417,8 +539,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section className="py-12 border-b border-[var(--hairline)]">
-          <Eyebrow>II. Combat</Eyebrow>
+        <section id="attacks" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "attacks" ? "book-page-hidden" : ""}`}>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Attacks</h2>
           {(state.attacks || []).map((a, i) => (
             <AttackRow
@@ -438,8 +559,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section className="py-12 border-b border-[var(--hairline)]">
-          <Eyebrow>III. Spellwork</Eyebrow>
+        <section id="spells" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "spells" ? "book-page-hidden" : ""}`}>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Spells & Slots</h2>
           {slots.map((tier, tierIdx) => (
             <div key={tier.level} className="flex flex-wrap items-center gap-2 mb-2 font-[family-name:var(--font-cinzel)] text-xs uppercase tracking-[0.08em] text-[var(--gold-dim)]">
@@ -451,6 +571,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                   disabled={!isOwner}
                   className={`w-3.5 h-3.5 border-[1.5px] border-[var(--gold)] ${i < tier.used ? "bg-[var(--gold)]" : "bg-transparent"}`}
                   style={{ clipPath: "polygon(50% 0%, 100% 35%, 78% 100%, 22% 100%, 0% 35%)" }}
+                  aria-label={`${ordinal(tier.level)} level slot ${i + 1} ${i < tier.used ? "used" : "available"}`}
                   onClick={() =>
                     patch((d) => {
                       const t = (d.slots as typeof slots)[tierIdx];
@@ -517,8 +638,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section className="py-12 border-b border-[var(--hairline)]">
-          <Eyebrow>IV. Possessions</Eyebrow>
+        <section id="gear" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "table" || (mode === "chronicle" && page !== "gear") ? "book-page-hidden" : ""}`}>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">What I Carry</h2>
           {state.gear.map((item, i) => (
             <div key={i} className="flex items-center gap-2 py-2 border-b border-dotted border-[var(--hairline)]">
@@ -548,8 +668,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           </div>
         </section>
 
-        <section className="py-12">
-          <Eyebrow>V. Who I Am</Eyebrow>
+        <section id="story" className={`py-12 book-page ${mode === "table" || (mode === "chronicle" && page !== "story") ? "book-page-hidden" : ""}`}>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Notes from the Journal</h2>
           <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 mb-8">
             {(["trait", "ideal", "bond", "flaw"] as const).map((k) => (
@@ -600,19 +719,22 @@ function Vital({
   onChange,
   disabled,
   last,
+  huge,
 }: {
   label: string;
   value: number;
   onChange: (n: number) => void;
   disabled: boolean;
   last?: boolean;
+  huge?: boolean;
 }) {
   return (
-    <div className={`flex-1 min-w-[90px] text-center py-4 ${last ? "" : "border-r border-[var(--hairline)]"}`}>
+    <div className={`flex-1 min-w-[90px] text-center py-4 ${last ? "" : "border-r border-[var(--hairline)]"} ${huge ? "min-w-[140px] py-6" : ""}`}>
       <input
-        className="font-[family-name:var(--font-mono)] text-[1.6rem] text-center ghost-input"
+        className={`font-[family-name:var(--font-mono)] text-center ghost-input ${huge ? "text-4xl" : "text-[1.6rem]"}`}
         type="number"
         disabled={disabled}
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(Number(e.target.value) || 0)}
       />

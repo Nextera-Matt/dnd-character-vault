@@ -5,10 +5,10 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
-const sanitizeHtml = require('sanitize-html');
 const path = require('path');
 const db = require('./db');
 const defaultTemplate = require('./default-template');
+const { mergeCharacterData, parseStoredCharacter } = require('./character-data');
 
 const app = express();
 // Behind nginx in production — without this, express-rate-limit (and req.ip
@@ -368,56 +368,37 @@ app.get('/api/characters/:id', requireAuth, (req, res) => {
     WHERE c.id = ?
   `).get(req.params.id);
   if (!row || !isMember(row.session_id, req.user.id)) return res.status(404).json({ error: 'Character not found.' });
+  const data = parseStoredCharacter(row.data, row.id);
+  if (!data) return res.status(500).json({ error: 'Character data could not be read.' });
   res.json({
-    id: row.id, name: row.name, data: JSON.parse(row.data), updatedAt: row.updated_at,
+    id: row.id, name: row.name, data, updatedAt: row.updated_at,
     ownerId: row.user_id, ownerName: row.ownerName, isOwner: row.user_id === req.user.id,
     sessionId: row.session_id, sessionName: row.sessionName,
   });
 });
 
-const SANITIZE_OPTS = {
-  allowedTags: ['p', 'br', 'b', 'i', 'strong', 'em'],
-  allowedAttributes: {},
-};
 const VERSION_SNAPSHOT_MIN_GAP_MINUTES = 10;
 const VERSION_KEEP_MAX = 20;
 
 app.put('/api/characters/:id', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT id, data FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  const row = db.prepare('SELECT id, data, updated_at FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'Character not found, or not yours to edit.' });
-  const data = req.body;
-  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Invalid character data.' });
 
-  // Every field that gets rendered via innerHTML client-side (not textContent)
-  // is a stored-XSS vector unless sanitized on the way in. Sanitizing here,
-  // server-side, rather than trusting the client — this is the one chokepoint
-  // every character save passes through, regardless of which page/flow wrote it.
-  //
-  // This list was built by actually grepping every innerHTML call site in
-  // sheet.html, not assumed — charName, the quad fields, attacks, skills,
-  // and languages all use textContent or escAttr()+value= already and don't
-  // need this; traits/spell-cards/gear do, and were genuinely missed in an
-  // earlier pass that only covered backstoryHTML and subtitle.
-  const sanitizeField = (obj, key) => { if (obj && typeof obj[key] === 'string') obj[key] = sanitizeHtml(obj[key], SANITIZE_OPTS); };
-
-  sanitizeField(data, 'backstoryHTML');
-  sanitizeField(data, 'subtitle');
-  if (Array.isArray(data.traits)) {
-    data.traits.forEach(t => { sanitizeField(t, 'title'); sanitizeField(t, 'body'); });
-  }
-  ['cantrips', 'prepared'].forEach(key => {
-    if (Array.isArray(data[key])) {
-      data[key].forEach(s => { sanitizeField(s, 'name'); sanitizeField(s, 'tag'); sanitizeField(s, 'info'); });
-    }
-  });
-  if (Array.isArray(data.gear)) {
-    data.gear = data.gear.map(item => typeof item === 'string' ? sanitizeHtml(item, SANITIZE_OPTS) : item);
+  // Optional If-Match (the updated_at from GET). Old clients that omit it still
+  // save; two Next tabs that both send it get a 409 instead of silent clobber.
+  const ifMatch = req.get('If-Match');
+  if (ifMatch && ifMatch !== row.updated_at) {
+    return res.status(409).json({
+      error: 'Character was saved elsewhere. Reload to continue.',
+      updatedAt: row.updated_at,
+    });
   }
 
-  // Snapshot the PRE-edit state for version history — but only if enough
-  // time has passed since the last snapshot. The app autosaves on every
-  // keystroke; snapshotting every save would create hundreds of near-
-  // identical rows per editing session instead of meaningful checkpoints.
+  const existing = parseStoredCharacter(row.data, row.id) || {};
+  const merged = mergeCharacterData(req.body, existing);
+  if (!merged.ok) return res.status(400).json({ error: merged.error });
+  const data = merged.data;
+
   const lastVersion = db.prepare(
     'SELECT saved_at FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT 1'
   ).get(req.params.id);
@@ -434,7 +415,8 @@ app.put('/api/characters/:id', requireAuth, (req, res) => {
   const name = (data.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
     .run(JSON.stringify(data), name, req.params.id);
-  res.json({ ok: true, updatedAt: new Date().toISOString() });
+  const updated = db.prepare('SELECT updated_at FROM characters WHERE id = ?').get(req.params.id);
+  res.json({ ok: true, updatedAt: updated.updated_at });
 });
 
 app.get('/api/characters/:id/versions', requireAuth, (req, res) => {
@@ -457,10 +439,15 @@ app.post('/api/characters/:id/versions/:versionId/restore', requireAuth, (req, r
   // Snapshot the CURRENT state before restoring, so restoring is itself undoable.
   db.prepare('INSERT INTO character_versions (character_id, data) VALUES (?, ?)').run(req.params.id, charRow.data);
 
-  const restoredData = JSON.parse(version.data);
+  const current = parseStoredCharacter(charRow.data, charRow.id) || {};
+  const incoming = parseStoredCharacter(version.data, req.params.id);
+  if (!incoming) return res.status(500).json({ error: 'That version could not be read.' });
+  const merged = mergeCharacterData(incoming, current);
+  if (!merged.ok) return res.status(400).json({ error: merged.error });
+  const restoredData = merged.data;
   const name = (restoredData.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
-    .run(version.data, name, req.params.id);
+    .run(JSON.stringify(restoredData), name, req.params.id);
   res.json({ ok: true, data: restoredData });
 });
 
@@ -477,6 +464,12 @@ app.put('/api/characters/:id/move', requireAuth, (req, res) => {
 
   if (Number(targetSessionId) === row.session_id) return res.status(400).json({ error: 'Already in that session.' });
   if (!isMember(targetSessionId, req.user.id)) return res.status(403).json({ error: "You're not a member of that session." });
+
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM characters WHERE session_id = ? AND user_id = ?')
+    .get(targetSessionId, req.user.id).n;
+  if (existing >= MAX_CHARACTERS_PER_SESSION) {
+    return res.status(429).json({ error: `You've reached the limit of ${MAX_CHARACTERS_PER_SESSION} characters for that session.` });
+  }
 
   db.prepare("UPDATE characters SET session_id = ?, updated_at = datetime('now') WHERE id = ?")
     .run(targetSessionId, req.params.id);

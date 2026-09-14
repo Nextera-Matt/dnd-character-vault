@@ -236,7 +236,72 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .ambient-veil,
-  .gold-flow {
+  .gold-flow,
+  .die-tumble {
     animation: none;
   }
+}
+
+.book-stage {
+  perspective: 1400px;
+  position: relative;
+}
+
+.book-page {
+  transform-origin: left center;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+}
+
+.book-page-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  pointer-events: none;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .book-page:not(.book-page-hidden) {
+    animation: page-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: rotateY(-12deg) translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.table-hud h2 {
+  font-size: 1.25rem;
+}
+
+.die-face {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 0.5rem;
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
+  font-family: var(--font-mono), monospace;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+}
+
+.die-tumble {
+  animation: die-spin 0.7s ease-out;
+}
+
+@keyframes die-spin {
+  0% { transform: rotateX(0) rotateY(0); }
+  100% { transform: rotateX(360deg) rotateY(180deg); }
 }

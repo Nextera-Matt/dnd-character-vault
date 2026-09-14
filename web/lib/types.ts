@@ -7,6 +7,8 @@ export type Ability = {
 export type Skill = {
   name: string;
   val: string;
+  proficient?: boolean;
+  override?: boolean;
 };
 
 export type Trait = {
@@ -44,6 +46,7 @@ export type CharacterData = {
     init: string;
     prof: number;
     gold: number;
+    initOverride?: boolean;
   };
   abilities: Ability[];
   skills: Skill[];

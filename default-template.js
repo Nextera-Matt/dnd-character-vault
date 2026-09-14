@@ -2,7 +2,7 @@ module.exports = function defaultTemplate() {
   return {
     charName: "New Character",
     subtitle: "Species &middot; Class &middot; Background",
-    vitals: { ac: 10, hpCur: 8, hpMax: 8, speed: 30, init: "+0", prof: 2, gold: 0 },
+    vitals: { ac: 10, hpCur: 8, hpMax: 8, speed: 30, init: "+0", prof: 2, gold: 0, initOverride: false },
     abilities: [
       { key: "STR", score: 10, save: false },
       { key: "DEX", score: 10, save: false },
@@ -12,7 +12,7 @@ module.exports = function defaultTemplate() {
       { key: "CHA", score: 10, save: false },
     ],
     skills: [
-      { name: "Skill", val: "+0" },
+      { name: "Skill", val: "+0", proficient: false, override: false },
     ],
     languages: ["Common"],
     traits: [

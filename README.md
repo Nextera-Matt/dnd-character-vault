@@ -1,10 +1,10 @@
 # Character Vault
 
-A small multi-session D&D character sheet app. Node/Express backend, SQLite (via `better-sqlite3`), static frontend in `public/`.
+A small multi-session D&D character sheet app. Node/Express backend, SQLite (via `better-sqlite3`), Next.js UI in `web/` (with the older `public/*.html` pages as a fallback).
 
 ## The model
 
-- **Player account (your vault)** — one identity, app-wide. Your recovery code logs you into it. Your vault holds every character you own, across any sessions you're part of.
+- **Player account (your vault)** — one identity, app-wide. Your name and password log you into it. Your vault holds every character you own, across any sessions you're part of.
 - **Session** — one campaign/table (e.g. "Curse of Strahd — Tuesdays"), with its own invite code. Joining a session with its code adds you as a member — it does **not** create a new account if you already have one.
 - **Character** — owned by one player, lives inside one session. Every member of that session can *view* it (read-only). Only the owner can *edit* it.
 - **Session admin** — whoever creates a session. Can regenerate its invite code, remove members (deletes that member's characters *in this session only* — their account and other sessions are untouched), delete any character in the session, or delete the whole session.
@@ -33,7 +33,7 @@ So the actual flow is: get the signup code from whoever runs the server → crea
 
 This deliberately avoids the earlier design where a single code did both jobs at once — that made "how does anyone besides the first person get in" confusing, since account creation and campaign membership were tangled together.
 
-This is intentionally lightweight for a friend group, not suitable for anything sensitive: no rate limiting on login attempts yet, and no password-reset flow if someone forgets theirs (you'd need to manually update their `password_hash` in the database, or just have them make a new account under a slightly different name).
+This is intentionally lightweight for a friend group. Login and signup are rate-limited (failed attempts only). There is still no player-facing password-reset flow — a site admin can reset a password from the admin page, or you can update `password_hash` in the database. Character edits are autosaved with version history (throttled snapshots; restore is itself undoable) and optimistic concurrency via `If-Match` on saves.
 
 ## Character limits
 
@@ -68,7 +68,7 @@ npm start          # terminal 1
 npm run dev:web    # terminal 2 — http://localhost:3001
 ```
 
-Themes: Ember Veil (default), Candlehall (light tavern), Seaglass, War Table. Ambient veil motion respects `prefers-reduced-motion`. Old `*.html` bookmarks redirect to the new paths.
+Themes: Ember Veil (default), Candlehall (light tavern), Seaglass, War Table. The character sheet has Chronicle (book pages) and At the table (large HP, slots, attacks, dice). Ambient veil motion respects `prefers-reduced-motion`. Old `*.html` bookmarks redirect to the new paths.
 
 ## Deploying to your VPS
 
@@ -118,14 +118,14 @@ Not captured even on a supported sheet: spellcasting details (flagged with a war
 
 ## Known limitations to revisit later
 
-- No login rate limiting
-- No password-reset flow — a forgotten password currently means a new account
-- No character-edit history/undo
+- No player-facing password reset (site admin can reset from the admin page)
 - No way for a session admin to demote themselves or transfer admin to someone else
+- No live shared HP / dice across the table (each browser has its own view)
+- Leave-session for players (today a session admin has to remove you)
 
 ## Compendium (spell/item lookup)
 
-`/compendium.html` — searchable spells and magic items, sourced from the official SRD 5.2.1 (2024 rules), released by Wizards of the Coast under CC-BY-4.0. 339 spells, 258 magic items, both with real mechanical detail (casting time, range, components, duration for spells; type, rarity, attunement for items), not just names.
+`/compendium/` (or `/compendium.html`) — searchable spells and magic items, sourced from the official SRD 5.2.1 (2024 rules), released by Wizards of the Coast under CC-BY-4.0. 339 spells, 258 magic items, both with real mechanical detail (casting time, range, components, duration for spells; type, rarity, attunement for items), not just names.
 
 **What's deliberately NOT in here, and why:** only SRD content — non-SRD subclasses, splatbook-exclusive spells/items (Xanathar's, Tasha's, etc.), and any setting/adventure lore (Curse of Strahd's own content included) are copyrighted material outside what WotC has released openly. Adding that would mean reproducing someone else's published text into a redistributable database, which doesn't become permissible by being non-commercial or staying within one group — the SRD boundary is a hard line, not a judgment call made per-use-case. Non-SRD content stays exactly where it already lived before this feature: free-text trait/gear fields you fill in yourself, in your own words, same as Caelric's Shadow Magic traits already work.
 

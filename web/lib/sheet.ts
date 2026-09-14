@@ -58,6 +58,52 @@ export function parseDamage(expr: string): { total: number; parts: string[] } {
   return { total, parts };
 }
 
+export const SKILL_ABILITY: Record<string, "STR" | "DEX" | "CON" | "INT" | "WIS" | "CHA"> = {
+  Acrobatics: "DEX",
+  "Animal Handling": "WIS",
+  Arcana: "INT",
+  Athletics: "STR",
+  Deception: "CHA",
+  History: "INT",
+  Insight: "WIS",
+  Intimidation: "CHA",
+  Investigation: "INT",
+  Medicine: "WIS",
+  Nature: "INT",
+  Perception: "WIS",
+  Performance: "CHA",
+  Persuasion: "CHA",
+  Religion: "INT",
+  "Sleight of Hand": "DEX",
+  Stealth: "DEX",
+  Survival: "WIS",
+};
+
+export function abilityScore(abilities: { key: string; score: number }[], key: string): number {
+  return abilities.find((a) => a.key === key)?.score ?? 10;
+}
+
+export function derivedInit(abilities: { key: string; score: number }[]): string {
+  return fmtMod(mod(abilityScore(abilities, "DEX")));
+}
+
+export function derivedSkillVal(
+  abilities: { key: string; score: number }[],
+  prof: number,
+  skill: { name: string; proficient?: boolean },
+): string {
+  const abi = SKILL_ABILITY[skill.name] || "INT";
+  return fmtMod(mod(abilityScore(abilities, abi)) + (skill.proficient ? Number(prof) || 0 : 0));
+}
+
+export function skillIsAuto(skill: { override?: boolean }): boolean {
+  return skill.override === false;
+}
+
+export function initIsAuto(vitals: { initOverride?: boolean }): boolean {
+  return vitals.initOverride === false;
+}
+
 export const SKILL_LIST = [
   "Acrobatics",
   "Animal Handling",

@@ -24,6 +24,12 @@ export function DiceTray({
   const [result, setResult] = useState("—");
   const [tone, setTone] = useState<"ok" | "crit" | "fumble">("ok");
   const [history, setHistory] = useState<string[]>([]);
+  const [tumble, setTumble] = useState(0);
+
+  function flashDie() {
+    if (reduce) return;
+    setTumble((n) => n + 1);
+  }
 
   function pushHistory(line: string) {
     setHistory((h) => [line, ...h].slice(0, 8));
@@ -38,6 +44,7 @@ export function DiceTray({
     const modeTag = mode !== "normal" ? ` (${mode === "adv" ? "Adv" : "Dis"})` : "";
     setResult(String(sum));
     setTone(picked === 20 ? "crit" : picked === 1 ? "fumble" : "ok");
+    flashDie();
     const rollsDisplay = rolls.length > 1 ? `[${rolls.map((r) => (r === picked ? r : r)).join(", ")}]` : `[${rolls[0]}]`;
     pushHistory(`${label ? label + ": " : ""}d20${modeTag}${modStr} ${rollsDisplay} = ${sum}`);
   }
@@ -48,6 +55,7 @@ export function DiceTray({
     const modStr = modifier ? (modifier > 0 ? `+${modifier}` : `${modifier}`) : "";
     setResult(String(sum));
     setTone("ok");
+    flashDie();
     pushHistory(`${label ? label + ": " : ""}${n}d${sides}${modStr} [${rolls.join(", ")}] = ${sum}`);
   }
 
@@ -55,6 +63,7 @@ export function DiceTray({
     const { total, parts } = parseDamage(expr);
     setResult(String(total));
     setTone("ok");
+    flashDie();
     pushHistory(`${label ? label + ": " : ""}${expr} ${parts.join(" ")} = ${total}`);
   }
 
@@ -106,6 +115,9 @@ export function DiceTray({
             <input className="w-12 text-center border border-[var(--hairline)] bg-transparent" type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} />
             <span>Mod</span>
             <input className="w-12 text-center border border-[var(--hairline)] bg-transparent" type="number" value={mod} onChange={(e) => setMod(Number(e.target.value) || 0)} />
+          </div>
+          <div key={tumble} className={`die-face ${tumble ? "die-tumble" : ""}`} aria-hidden="true">
+            {result}
           </div>
           <div
             className={`font-[family-name:var(--font-mono)] text-2xl text-center py-2 border-t border-[var(--hairline)] ${
