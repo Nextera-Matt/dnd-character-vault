@@ -475,8 +475,6 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                 </div>
                 );
               })}
-                </div>
-              ))}
               {isOwner ? (
                 <button type="button" className="btn w-full mt-2 border-dashed" onClick={() => patch((d) => { d.skills.push({ name: "New Skill", val: "+0", proficient: false, override: false }); })}>
                   + Add skill

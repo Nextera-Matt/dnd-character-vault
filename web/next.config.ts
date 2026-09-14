@@ -1,10 +1,12 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const exporting = process.env.NEXT_EXPORT === "1";
 
 const nextConfig: NextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
+  outputFileTracingRoot: path.join(__dirname, ".."),
   ...(exporting
     ? { output: "export" as const }
     : {
