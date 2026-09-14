@@ -369,14 +369,17 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                 key={id}
                 href={`#${id}`}
                 className={`btn ${page === id ? "btn-primary" : ""}`}
-                onClick={() => setPage(id)}
+                onClick={() => {
+                  setPage(id);
+                  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
               >
                 {label}
               </a>
             ))}
           </div>
         ) : null}
-        <section id="vitals" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "vitals" ? "book-page-hidden" : ""}`}>
+        <section id="vitals" className="py-12 border-b border-[var(--hairline)] book-page">
           <Eyebrow>I. Vitals & Traits</Eyebrow>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Body & Bearing</h2>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-3 mb-8">
@@ -537,7 +540,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section id="attacks" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "attacks" ? "book-page-hidden" : ""}`}>
+        <section id="attacks" className="py-12 border-b border-[var(--hairline)] book-page">
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Attacks</h2>
           {(state.attacks || []).map((a, i) => (
             <AttackRow
@@ -557,7 +560,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section id="spells" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "chronicle" && page !== "spells" ? "book-page-hidden" : ""}`}>
+        <section id="spells" className="py-12 border-b border-[var(--hairline)] book-page">
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Spells & Slots</h2>
           {slots.map((tier, tierIdx) => (
             <div key={tier.level} className="flex flex-wrap items-center gap-2 mb-2 font-[family-name:var(--font-cinzel)] text-xs uppercase tracking-[0.08em] text-[var(--gold-dim)]">
@@ -636,7 +639,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           ) : null}
         </section>
 
-        <section id="gear" className={`py-12 border-b border-[var(--hairline)] book-page ${mode === "table" || (mode === "chronicle" && page !== "gear") ? "book-page-hidden" : ""}`}>
+        <section id="gear" className="py-12 border-b border-[var(--hairline)] book-page">
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">What I Carry</h2>
           {state.gear.map((item, i) => (
             <div key={i} className="flex items-center gap-2 py-2 border-b border-dotted border-[var(--hairline)]">
@@ -666,7 +669,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           </div>
         </section>
 
-        <section id="story" className={`py-12 book-page ${mode === "table" || (mode === "chronicle" && page !== "story") ? "book-page-hidden" : ""}`}>
+        <section id="story" className="py-12 book-page">
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Notes from the Journal</h2>
           <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 mb-8">
             {(["trait", "ideal", "bond", "flaw"] as const).map((k) => (
