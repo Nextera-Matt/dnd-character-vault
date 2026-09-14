@@ -105,8 +105,14 @@ export function DiceTray({
           </div>
           <div className="flex gap-1 mb-2">
             {(["normal", "adv", "dis"] as const).map((m) => (
-              <button key={m} type="button" className={`btn flex-1 text-[0.6rem] ${mode === m ? "btn-primary" : ""}`} onClick={() => setMode(m)}>
-                {m === "normal" ? "Normal" : m === "adv" ? "Advantage" : "Disadvantage"}
+              <button
+                key={m}
+                type="button"
+                title={m === "normal" ? "Normal" : m === "adv" ? "Advantage" : "Disadvantage"}
+                className={`btn flex-1 px-1 py-1 text-[0.55rem] tracking-[0.02em] whitespace-nowrap ${mode === m ? "btn-primary" : ""}`}
+                onClick={() => setMode(m)}
+              >
+                {m === "normal" ? "Normal" : m === "adv" ? "Adv" : "Dis"}
               </button>
             ))}
           </div>

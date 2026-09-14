@@ -234,6 +234,16 @@ button {
   outline: none;
 }
 
+.ghost-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.ghost-input::-webkit-outer-spin-button,
+.ghost-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ambient-veil,
   .gold-flow,
