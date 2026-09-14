@@ -16,7 +16,7 @@ export function AutocompleteInput({
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(-1);
   const wrap = useRef<HTMLDivElement>(null);
-  const q = value.trim().toLowerCase();
+  const q = (value ?? "").trim().toLowerCase();
   const matches = (q ? options.filter((o) => o.toLowerCase().includes(q)) : options).slice(0, 8);
 
   useEffect(() => {
@@ -28,10 +28,10 @@ export function AutocompleteInput({
   }, []);
 
   return (
-    <div ref={wrap} className="relative flex-1">
+    <div ref={wrap} className="relative min-w-0 flex-1">
       <input
-        className={className || "ghost-input"}
-        value={value}
+        className={className || "ghost-input w-full"}
+        value={value ?? ""}
         autoComplete="off"
         onFocus={() => setOpen(true)}
         onChange={(e) => {

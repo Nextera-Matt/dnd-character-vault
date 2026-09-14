@@ -227,7 +227,6 @@ button {
   background: transparent;
   border: none;
   color: inherit;
-  width: 100%;
 }
 
 .ghost-input:focus {

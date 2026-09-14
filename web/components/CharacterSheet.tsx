@@ -327,7 +327,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           <Vital label="Speed" disabled={!isOwner} value={state.vitals.speed} onChange={(n) => patch((d) => { d.vitals.speed = n; })} huge={mode === "table"} />
           <div className={`flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)] ${mode === "table" ? "min-w-[140px] py-6" : ""}`}>
             <input
-              className={`font-[family-name:var(--font-mono)] text-center ghost-input ${mode === "table" ? "text-4xl" : "text-[1.6rem]"}`}
+              className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${mode === "table" ? "text-4xl" : "text-[1.6rem]"}`}
               disabled={!isOwner || initIsAuto(state.vitals)}
               aria-label="Initiative"
               value={initIsAuto(state.vitals) ? derivedInit(state.abilities) : state.vitals.init}
@@ -387,7 +387,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                 <div key={a.key} className="surface text-center p-4">
                   <div className="font-[family-name:var(--font-cinzel)] text-xs tracking-[0.1em] text-[var(--gold-dim)]">{a.key}</div>
                   <input
-                    className="font-[family-name:var(--font-mono)] text-[1.5rem] text-center ghost-input"
+                    className="font-[family-name:var(--font-mono)] text-[1.5rem] text-center ghost-input w-full"
                     type="number"
                     disabled={!isOwner}
                     value={a.score}
@@ -425,11 +425,11 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                 const auto = skillIsAuto(sk);
                 const shown = auto ? derivedSkillVal(state.abilities, state.vitals.prof, sk) : sk.val;
                 return (
-                <div key={i} className="flex items-center gap-2 py-1 border-b border-dotted border-[var(--hairline)]">
+                <div key={i} className="flex items-center gap-2 min-w-0 py-1 border-b border-dotted border-[var(--hairline)]">
                   <AutocompleteInput
                     value={sk.name}
                     options={SKILL_LIST}
-                    className="ghost-input flex-1"
+                    className="ghost-input w-full min-w-0"
                     onChange={(v) => patch((d) => { d.skills[i].name = v; })}
                   />
                   <label className="text-[0.62rem] text-[var(--ink-dim)] whitespace-nowrap">
@@ -729,7 +729,7 @@ function Vital({
   return (
     <div className={`flex-1 min-w-[90px] text-center py-4 ${last ? "" : "border-r border-[var(--hairline)]"} ${huge ? "min-w-[140px] py-6" : ""}`}>
       <input
-        className={`font-[family-name:var(--font-mono)] text-center ghost-input ${huge ? "text-4xl" : "text-[1.6rem]"}`}
+        className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${huge ? "text-4xl" : "text-[1.6rem]"}`}
         type="number"
         disabled={disabled}
         aria-label={label}
