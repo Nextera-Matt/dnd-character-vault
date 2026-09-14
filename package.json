@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "dev:web": "npm run dev --prefix web",
+    "build:web": "NEXT_EXPORT=1 npm run build --prefix web",
     "test": "node --test tests/api.test.js"
   },
   "keywords": [],

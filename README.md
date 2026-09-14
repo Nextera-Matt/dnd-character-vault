@@ -18,18 +18,8 @@ server.js               Express app + all API routes
 db.js                    SQLite schema (users, sessions, session_members, characters)
 default-template.js      Blank character template used for new characters
 seed-caelric.js          One-off script: node seed-caelric.js <userId> <sessionId>
-public/
-  index.html             Join (invite code) / sign-in (recovery code)
-  vault.html              Player's home: their sessions + all their characters
-  session.html            One session's shared character roster + admin panel
-  sheet.html               The interactive character sheet (read-only for non-owners)
-  import.html              PDF import flow
-  import-parser.js         Roll20 2024 sheet PDF text parser
-  characters.html           Redirect stub for old bookmarks -> vault.html
-  styles.css                Shared theme
-dnd-app.service           systemd unit
-nginx-dnd.conf.example    Reverse proxy config for dnd.matthodges.uk
-.env.example
+web/                     Next.js UI (themes, motion, character sheet)
+public/                  Fallback static UI + SRD JSON until web/out is built
 ```
 
 ## How auth works — two separate codes, on purpose
@@ -60,6 +50,25 @@ npm start
 ```
 
 Visit `http://localhost:3000`. Sign up with your `SIGNUP_CODE`, then create your own session from the Vault — you'll be its admin automatically.
+
+### Next.js UI (`web/`)
+
+The vault, sheet, and related pages are a Next.js app in `web/`. It uses the existing Express API (same cookies, same `/api` routes). After `npm run build:web`, Express serves the static export from `web/out`. If that folder is missing, the older `public/*.html` pages still work.
+
+```bash
+cd web && npm install
+cd .. && npm run build:web
+npm start
+```
+
+During design work, run the API and Next together (Next on 3001, proxying `/api` to Express on 3000):
+
+```bash
+npm start          # terminal 1
+npm run dev:web    # terminal 2 — http://localhost:3001
+```
+
+Themes: Ember Veil (default), Candlehall (light tavern), Seaglass, War Table. Ambient veil motion respects `prefers-reduced-motion`. Old `*.html` bookmarks redirect to the new paths.
 
 ## Deploying to your VPS
 

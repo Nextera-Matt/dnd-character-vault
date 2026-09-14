@@ -3,6 +3,7 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const sanitizeHtml = require('sanitize-html');
 const path = require('path');
@@ -493,6 +494,29 @@ app.delete('/api/characters/:id', requireAuth, (req, res) => {
 });
 
 // ---------- Static frontend ----------
+// Old bookmarks still use *.html query-string URLs. The Next UI lives at
+// trailing-slash paths (/vault/, /sheet/?id=…). Keep both working.
+const HTML_REDIRECTS = {
+  '/vault.html': '/vault/',
+  '/characters.html': '/vault/',
+  '/session.html': '/session/',
+  '/sheet.html': '/sheet/',
+  '/import.html': '/import/',
+  '/admin.html': '/admin/',
+  '/compendium.html': '/compendium/',
+  '/glossary.html': '/glossary/',
+  '/index.html': '/',
+};
+app.get(Object.keys(HTML_REDIRECTS), (req, res) => {
+  const dest = HTML_REDIRECTS[req.path];
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, dest + query);
+});
+
+const nextOut = path.join(__dirname, 'web', 'out');
+if (fs.existsSync(nextOut)) {
+  app.use(express.static(nextOut));
+}
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
