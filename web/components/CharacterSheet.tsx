@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { DiceTray, type DiceHandle } from "@/components/DiceTray";
+import { DiceTray, type AnnouncedRoll, type DiceHandle } from "@/components/DiceTray";
 import { MotionPage } from "@/components/Motion";
 import { ThemeSwitcher } from "@/components/ThemeProvider";
 import { ApiError, api } from "@/lib/api";
@@ -22,7 +22,7 @@ import {
   parseModifier,
   skillIsAuto,
 } from "@/lib/sheet";
-import type { Attack, CharacterData, CharacterPayload, SessionSummary, SpellCard } from "@/lib/types";
+import type { Attack, CharacterData, CharacterPayload, SessionCharacter, SessionSummary, SpellCard } from "@/lib/types";
 
 export default function CharacterSheet({ charId }: { charId: string }) {
   const router = useRouter();
@@ -40,12 +40,17 @@ export default function CharacterSheet({ charId }: { charId: string }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const stateRef = useRef<CharacterData | null>(null);
+  const payloadRef = useRef<CharacterPayload | null>(null);
   const ownerRef = useRef(true);
   const updatedAtRef = useRef("");
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    payloadRef.current = payload;
+  }, [payload]);
 
   function scheduleSave(next: CharacterData) {
     if (!ownerRef.current) return;
@@ -138,6 +143,74 @@ export default function CharacterSheet({ charId }: { charId: string }) {
     const fromHash = window.location.hash.replace("#", "");
     if (["vitals", "attacks", "spells", "gear", "story"].includes(fromHash)) setPage(fromHash);
   }, []);
+
+  useEffect(() => {
+    if (!payload) return;
+    const source = new EventSource(`/api/sessions/${payload.sessionId}/events`);
+    function onCharacter(ev: Event) {
+      let message: { character?: SessionCharacter };
+      try {
+        message = JSON.parse((ev as MessageEvent).data) as { character?: SessionCharacter };
+      } catch (err) {
+        console.error("Could not read a table update", err);
+        return;
+      }
+      const character = message.character;
+      if (!character || character.id !== Number(charId) || inFlight.current) return;
+      const current = stateRef.current;
+      const sameVitals =
+        !!current &&
+        current.vitals.hpCur === character.hpCur &&
+        current.vitals.hpMax === character.hpMax &&
+        current.vitals.ac === character.ac &&
+        (current.vitals.conditions || "") === (character.conditions || "");
+      if (ownerRef.current && sameVitals) {
+        updatedAtRef.current = character.updatedAt;
+        return;
+      }
+      if (ownerRef.current) updatedAtRef.current = character.updatedAt;
+      setState((prev) =>
+        prev
+          ? {
+              ...prev,
+              charName: ownerRef.current ? prev.charName : character.name,
+              vitals: {
+                ...prev.vitals,
+                ac: character.ac,
+                hpCur: character.hpCur,
+                hpMax: character.hpMax,
+                conditions: character.conditions,
+              },
+            }
+          : prev,
+      );
+    }
+    source.addEventListener("character", onCharacter);
+    return () => {
+      source.removeEventListener("character", onCharacter);
+      source.close();
+    };
+  }, [payload, charId]);
+
+  function announceRoll(roll: AnnouncedRoll) {
+    const current = payloadRef.current;
+    if (!current) return;
+    const body: { label: string; detail: string; total: number; characterId?: number } = {
+      label: roll.label,
+      detail: roll.detail,
+      total: roll.total,
+    };
+    if (current.isOwner) body.characterId = current.id;
+    void api(`/api/sessions/${current.sessionId}/rolls`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).catch((err: unknown) => {
+      console.error("Could not share dice roll", {
+        sessionId: current.sessionId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
 
   if (error) return <p className="text-center text-[var(--danger)] py-20">{error}</p>;
   if (!state || !payload) return <p className="text-center text-[var(--ink-dim)] py-20">Loading…</p>;
@@ -353,6 +426,18 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           </div>
           <Vital last label="Prof" disabled={!isOwner} value={state.vitals.prof} onChange={(n) => patch((d) => { d.vitals.prof = n; })} huge={mode === "table"} />
         </div>
+        <label className={`block mx-auto mt-3 text-center text-sm text-[var(--ink-dim)] ${mode === "table" ? "max-w-[920px]" : "max-w-[640px]"}`}>
+          Conditions
+          <input
+            className="block w-full mt-1 text-center ghost-input"
+            disabled={!isOwner}
+            maxLength={80}
+            aria-label="Conditions"
+            placeholder={isOwner ? "poisoned, concentrating…" : ""}
+            value={state.vitals.conditions || ""}
+            onChange={(e) => patch((d) => { d.vitals.conditions = e.target.value; })}
+          />
+        </label>
       </header>
 
       <main className={`max-w-[760px] mx-auto px-6 pb-24 ${mode === "table" ? "max-w-[920px] table-hud" : "book-stage"}`}>
@@ -700,7 +785,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
       <footer className="text-center py-10 text-[var(--hairline)] font-[family-name:var(--font-mono)] text-xs tracking-[0.08em]">
         Character Vault
       </footer>
-      <DiceTray handleRef={dice} />
+      <DiceTray handleRef={dice} onRoll={announceRoll} />
     </MotionPage>
   );
 }

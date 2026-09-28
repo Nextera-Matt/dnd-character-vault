@@ -43,6 +43,16 @@ function createTestDb(path = ':memory:') {
       data TEXT NOT NULL,
       saved_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS session_rolls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL,
+      label TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT '',
+      total INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return {
     prepare(sql) {

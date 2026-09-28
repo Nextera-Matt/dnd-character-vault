@@ -37,6 +37,11 @@ function asString(value, fallback) {
   return typeof value === 'string' ? value : fallback;
 }
 
+function plainText(value, maxLen) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001F]/g, '').trim().slice(0, maxLen);
+}
+
 function pickArray(incoming, existing, fallback) {
   if (Array.isArray(incoming)) return incoming;
   if (Array.isArray(existing)) return existing;
@@ -72,6 +77,7 @@ function mergeCharacterData(incoming, existing) {
       prof: asNumber(incomingVitals.prof ?? storedVitals.prof, base.vitals.prof),
       gold: asNumber(incomingVitals.gold ?? storedVitals.gold, base.vitals.gold),
       init: asString(incomingVitals.init ?? storedVitals.init, base.vitals.init),
+      conditions: plainText(incomingVitals.conditions ?? storedVitals.conditions, 80),
     },
     quad: {
       ...base.quad,
@@ -115,4 +121,5 @@ module.exports = {
   mergeCharacterData,
   sanitizeCharacterData,
   parseStoredCharacter,
+  plainText,
 };

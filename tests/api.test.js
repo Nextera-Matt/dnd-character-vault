@@ -39,7 +39,7 @@ test.before(async () => {
   const projectRoot = path.join(__dirname, '..');
 
   // Copy the real app files we need into an isolated test directory
-  for (const f of ['server.js', 'default-template.js', 'character-data.js', 'public']) {
+  for (const f of ['server.js', 'default-template.js', 'character-data.js', 'session-live.js', 'public']) {
     fs.cpSync(path.join(projectRoot, f), path.join(testDir, f), { recursive: true });
   }
 
