@@ -199,6 +199,13 @@ button {
   color: var(--gold);
 }
 
+.btn-compact {
+  padding: 0.28rem 0.4rem;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .btn-danger:hover {
   border-color: var(--danger);
   color: var(--danger);
@@ -288,8 +295,30 @@ button {
   }
 }
 
+.table-hud {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-hud > section {
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+
+.table-hud > #attacks { order: 1; }
+.table-hud > #spells { order: 2; }
+.table-hud > #vitals { order: 3; }
+.table-hud > #gear { order: 4; }
+.table-hud > #story { order: 5; }
+
 .table-hud h2 {
   font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.table-hud .book-page {
+  animation: none;
+  transform: none;
 }
 
 .die-face {

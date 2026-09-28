@@ -216,6 +216,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
   if (!state || !payload) return <p className="text-center text-[var(--ink-dim)] py-20">Loading…</p>;
 
   const isOwner = payload.isOwner;
+  const table = mode === "table";
   const slots = Array.isArray(state.slots) ? state.slots : normalizeSlots(state.slots);
 
   return (
@@ -387,27 +388,45 @@ export default function CharacterSheet({ charId }: { charId: string }) {
           onInput={(e) => patch((d) => { d.subtitle = e.currentTarget.innerHTML; })}
         />
         ) : null}
-        <div className={`flex justify-center flex-wrap max-w-[640px] mx-auto mt-8 border border-[var(--hairline)] bg-[var(--bg-raised)] ${mode === "table" ? "max-w-[920px] mt-4" : ""}`}>
-          <Vital label="AC" disabled={!isOwner} value={state.vitals.ac} onChange={(n) => patch((d) => { d.vitals.ac = n; })} huge={mode === "table"} />
-          <div className={`flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)] ${mode === "table" ? "min-w-[160px] py-6" : ""}`}>
-            <div className={`font-[family-name:var(--font-mono)] flex justify-center gap-1 ${mode === "table" ? "text-5xl" : "text-[1.6rem]"}`}>
-              <input className={`${mode === "table" ? "w-20" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Current HP" value={state.vitals.hpCur} onChange={(e) => patch((d) => { d.vitals.hpCur = Number(e.target.value) || 0; })} />
-              /
-              <input className={`${mode === "table" ? "w-20" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Max HP" value={state.vitals.hpMax} onChange={(e) => patch((d) => { d.vitals.hpMax = Number(e.target.value) || 0; })} />
+        <div className={`mx-auto border border-[var(--hairline)] bg-[var(--bg-raised)] ${table ? "grid grid-cols-5 max-w-[920px] mt-4" : "flex justify-center flex-wrap max-w-[640px] mt-8"}`}>
+          <Vital label="AC" disabled={!isOwner} value={state.vitals.ac} onChange={(n) => patch((d) => { d.vitals.ac = n; })} table={table} />
+          <div className={`text-center border-r border-[var(--hairline)] flex flex-col justify-center ${table ? "min-h-[7.5rem] px-2 py-3" : "flex-1 min-w-[90px] py-4"}`}>
+            <div className={`font-[family-name:var(--font-mono)] flex items-center justify-center ${table ? "text-4xl" : "text-[1.6rem]"}`}>
+              <input className={`${table ? "w-[3.2ch]" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Current HP" value={state.vitals.hpCur} onChange={(e) => patch((d) => { d.vitals.hpCur = Number(e.target.value) || 0; })} />
+              <span className="text-[var(--ink-dim)]">/</span>
+              <input className={`${table ? "w-[3.2ch]" : "w-10"} text-center ghost-input`} type="number" disabled={!isOwner} aria-label="Max HP" value={state.vitals.hpMax} onChange={(e) => patch((d) => { d.vitals.hpMax = Number(e.target.value) || 0; })} />
             </div>
             <div className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase text-[var(--gold-dim)]">HP</div>
           </div>
-          <Vital label="Speed" disabled={!isOwner} value={state.vitals.speed} onChange={(n) => patch((d) => { d.vitals.speed = n; })} huge={mode === "table"} />
-          <div className={`flex-1 min-w-[90px] text-center py-4 border-r border-[var(--hairline)] ${mode === "table" ? "min-w-[140px] py-6" : ""}`}>
+          <Vital label="Speed" disabled={!isOwner} value={state.vitals.speed} onChange={(n) => patch((d) => { d.vitals.speed = n; })} table={table} />
+          <div className={`text-center border-r border-[var(--hairline)] flex flex-col justify-center ${table ? "min-h-[7.5rem] px-2 py-3" : "flex-1 min-w-[90px] py-4"}`}>
             <input
-              className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${mode === "table" ? "text-4xl" : "text-[1.6rem]"}`}
+              className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${table ? "text-3xl" : "text-[1.6rem]"}`}
               disabled={!isOwner || initIsAuto(state.vitals)}
               aria-label="Initiative"
               value={initIsAuto(state.vitals) ? derivedInit(state.abilities) : state.vitals.init}
               onChange={(e) => patch((d) => { d.vitals.init = e.target.value; })}
             />
-            <div className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase text-[var(--gold-dim)]">Init</div>
-            {isOwner ? (
+            <div className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase text-[var(--gold-dim)] flex items-center justify-center gap-2">
+              Init
+              {isOwner && table ? (
+                <label className="font-[family-name:var(--font-garamond)] text-[0.62rem] tracking-normal normal-case text-[var(--ink-dim)]">
+                  <input
+                    type="checkbox"
+                    className="mr-1"
+                    checked={initIsAuto(state.vitals)}
+                    onChange={(e) =>
+                      patch((d) => {
+                        d.vitals.initOverride = !e.target.checked;
+                        if (e.target.checked) d.vitals.init = derivedInit(d.abilities);
+                      })
+                    }
+                  />
+                  Auto
+                </label>
+              ) : null}
+            </div>
+            {isOwner && !table ? (
               <label className="block text-[0.62rem] text-[var(--ink-dim)] mt-1">
                 <input
                   type="checkbox"
@@ -424,12 +443,12 @@ export default function CharacterSheet({ charId }: { charId: string }) {
               </label>
             ) : null}
           </div>
-          <Vital last label="Prof" disabled={!isOwner} value={state.vitals.prof} onChange={(n) => patch((d) => { d.vitals.prof = n; })} huge={mode === "table"} />
+          <Vital last label="Prof" disabled={!isOwner} value={state.vitals.prof} onChange={(n) => patch((d) => { d.vitals.prof = n; })} table={table} />
         </div>
-        <label className={`block mx-auto mt-3 text-center text-sm text-[var(--ink-dim)] ${mode === "table" ? "max-w-[920px]" : "max-w-[640px]"}`}>
-          Conditions
+        <label className={`mx-auto mt-3 text-sm text-[var(--ink-dim)] ${table ? "flex items-center gap-3 max-w-[920px] text-left" : "block max-w-[640px] text-center"}`}>
+          <span className="font-[family-name:var(--font-cinzel)] text-[0.65rem] tracking-[0.12em] uppercase shrink-0">Conditions</span>
           <input
-            className="block w-full mt-1 text-center ghost-input"
+            className={`ghost-input ${table ? "flex-1 border-b border-dotted border-[var(--hairline)] text-left" : "block w-full mt-1 text-center"}`}
             disabled={!isOwner}
             maxLength={80}
             aria-label="Conditions"
@@ -467,12 +486,12 @@ export default function CharacterSheet({ charId }: { charId: string }) {
         <section id="vitals" className="py-12 border-b border-[var(--hairline)] book-page">
           <Eyebrow>I. Vitals & Traits</Eyebrow>
           <h2 className="font-[family-name:var(--font-cinzel)] text-[1.6rem] text-[var(--gold)] mb-6">Body & Bearing</h2>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-3 mb-8">
+          <div className={table ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6" : "grid grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-3 mb-8"}>
             {state.abilities.map((a, i) => {
               const m = mod(a.score);
               const saveVal = m + (a.save ? Number(state.vitals.prof) : 0);
               return (
-                <div key={a.key} className="surface text-center p-4">
+                <div key={a.key} className={`surface text-center flex flex-col ${table ? "p-3" : "p-4"}`}>
                   <div className="font-[family-name:var(--font-cinzel)] text-xs tracking-[0.1em] text-[var(--gold-dim)]">{a.key}</div>
                   <input
                     className="font-[family-name:var(--font-mono)] text-[1.5rem] text-center ghost-input w-full"
@@ -482,26 +501,28 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                     onChange={(e) => patch((d) => { d.abilities[i].score = Number(e.target.value) || 0; })}
                   />
                   <div className="font-[family-name:var(--font-mono)] text-sm text-[var(--veil)]">{fmtMod(m)}</div>
-                  <button type="button" className="btn text-[0.68rem] mt-1 px-1 py-0.5" onClick={() => dice.current?.rollD20(m, a.key)}>
-                    Roll
-                  </button>
-                  {isOwner ? (
+                  <div className="mt-auto flex flex-col gap-1 pt-2">
+                    <button type="button" className="btn btn-compact w-full" onClick={() => dice.current?.rollD20(m, a.key)}>
+                      Roll
+                    </button>
+                    {isOwner ? (
+                      <button
+                        type="button"
+                        className={`btn btn-compact w-full ${a.save ? "border-[var(--danger)] text-[var(--danger)]" : ""}`}
+                        onClick={() => patch((d) => { d.abilities[i].save = !d.abilities[i].save; })}
+                      >
+                        {a.save ? "Save" : "Save?"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      className={`btn text-[0.55rem] mt-1 ${a.save ? "border-[var(--danger)] text-[var(--danger)]" : ""}`}
-                      onClick={() => patch((d) => { d.abilities[i].save = !d.abilities[i].save; })}
+                      className="btn btn-compact w-full"
+                      disabled={!a.save}
+                      onClick={() => dice.current?.rollD20(saveVal, a.key + " Save")}
                     >
-                      {a.save ? "Save" : "Save?"}
+                      {a.save ? `Save ${fmtMod(saveVal)}` : "Save roll"}
                     </button>
-                  ) : null}
-                  {a.save ? (
-                    <>
-                      <div className="font-[family-name:var(--font-mono)] text-xs text-[var(--danger)] mt-1">Save {fmtMod(saveVal)}</div>
-                      <button type="button" className="btn text-[0.68rem] mt-1 px-1 py-0.5" onClick={() => dice.current?.rollD20(saveVal, a.key + " Save")}>
-                        Save roll
-                      </button>
-                    </>
-                  ) : null}
+                  </div>
                 </div>
               );
             })}
@@ -513,7 +534,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                 const auto = skillIsAuto(sk);
                 const shown = auto ? derivedSkillVal(state.abilities, state.vitals.prof, sk) : sk.val;
                 return (
-                <div key={i} className="flex items-center gap-2 min-w-0 py-1 border-b border-dotted border-[var(--hairline)]">
+                <div key={i} className="flex flex-nowrap items-center gap-2 min-w-0 py-1 border-b border-dotted border-[var(--hairline)]">
                   <AutocompleteInput
                     value={sk.name}
                     options={SKILL_LIST}
@@ -552,7 +573,7 @@ export default function CharacterSheet({ charId }: { charId: string }) {
                     />
                     Auto
                   </label>
-                  <button type="button" className="btn text-[0.68rem] px-1 py-0.5" onClick={() => dice.current?.rollD20(parseModifier(shown), sk.name)}>
+                  <button type="button" className="btn btn-compact shrink-0" onClick={() => dice.current?.rollD20(parseModifier(shown), sk.name)}>
                     Roll
                   </button>
                   {isOwner ? (
@@ -805,19 +826,19 @@ function Vital({
   onChange,
   disabled,
   last,
-  huge,
+  table,
 }: {
   label: string;
   value: number;
   onChange: (n: number) => void;
   disabled: boolean;
   last?: boolean;
-  huge?: boolean;
+  table?: boolean;
 }) {
   return (
-    <div className={`flex-1 min-w-[90px] text-center py-4 ${last ? "" : "border-r border-[var(--hairline)]"} ${huge ? "min-w-[140px] py-6" : ""}`}>
+    <div className={`text-center flex flex-col justify-center ${table ? "min-h-[7.5rem] px-2 py-3" : "flex-1 min-w-[90px] py-4"} ${last ? "" : "border-r border-[var(--hairline)]"}`}>
       <input
-        className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${huge ? "text-4xl" : "text-[1.6rem]"}`}
+        className={`font-[family-name:var(--font-mono)] text-center ghost-input w-full ${table ? "text-3xl" : "text-[1.6rem]"}`}
         type="number"
         disabled={disabled}
         aria-label={label}
@@ -861,10 +882,10 @@ function AttackRow({
         <input className="w-12 text-center font-[family-name:var(--font-mono)] ghost-input" disabled={!isOwner} value={attack.bonus} onChange={(e) => onChange({ ...attack, bonus: e.target.value })} title="To-hit bonus" />
         <input className="w-20 text-center font-[family-name:var(--font-mono)] ghost-input" disabled={!isOwner} value={attack.damage} onChange={(e) => onChange({ ...attack, damage: e.target.value })} title="Damage dice" />
         <input className="flex-1 min-w-[7rem] ghost-input border-b border-dotted border-[var(--hairline)] text-sm text-[var(--ink-dim)]" disabled={!isOwner} placeholder="Range / properties" value={attack.range || ""} onChange={(e) => onChange({ ...attack, range: e.target.value })} />
-        <button type="button" className="btn text-[0.68rem] py-0.5" onClick={onHit}>
+        <button type="button" className="btn btn-compact" onClick={onHit}>
           Hit
         </button>
-        <button type="button" className="btn text-[0.68rem] py-0.5" onClick={onDmg}>
+        <button type="button" className="btn btn-compact" onClick={onDmg}>
           Dmg
         </button>
       </div>
