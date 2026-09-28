@@ -29,3 +29,6 @@ jobs:
 
       - name: Check character-data.js syntax
         run: node -c character-data.js
+
+      - name: Check session-live.js syntax
+        run: node -c session-live.js

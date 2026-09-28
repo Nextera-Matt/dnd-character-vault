@@ -2,7 +2,7 @@ module.exports = function defaultTemplate() {
   return {
     charName: "New Character",
     subtitle: "Species &middot; Class &middot; Background",
-    vitals: { ac: 10, hpCur: 8, hpMax: 8, speed: 30, init: "+0", prof: 2, gold: 0, initOverride: false },
+    vitals: { ac: 10, hpCur: 8, hpMax: 8, speed: 30, init: "+0", prof: 2, gold: 0, initOverride: false, conditions: "" },
     abilities: [
       { key: "STR", score: 10, save: false },
       { key: "DEX", score: 10, save: false },

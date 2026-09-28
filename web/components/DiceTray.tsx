@@ -6,6 +6,12 @@ import { parseDamage, rollDie } from "@/lib/sheet";
 
 export type RollMode = "normal" | "adv" | "dis";
 
+export type AnnouncedRoll = {
+  label: string;
+  detail: string;
+  total: number;
+};
+
 export type DiceHandle = {
   rollD20: (modifier: number, label: string) => void;
   rollDamage: (expr: string, label: string) => void;
@@ -13,8 +19,10 @@ export type DiceHandle = {
 
 export function DiceTray({
   handleRef,
+  onRoll,
 }: {
   handleRef: React.MutableRefObject<DiceHandle | null>;
+  onRoll?: (roll: AnnouncedRoll) => void;
 }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
@@ -46,7 +54,9 @@ export function DiceTray({
     setTone(picked === 20 ? "crit" : picked === 1 ? "fumble" : "ok");
     flashDie();
     const rollsDisplay = rolls.length > 1 ? `[${rolls.map((r) => (r === picked ? r : r)).join(", ")}]` : `[${rolls[0]}]`;
-    pushHistory(`${label ? label + ": " : ""}d20${modeTag}${modStr} ${rollsDisplay} = ${sum}`);
+    const detail = `d20${modeTag}${modStr} ${rollsDisplay} = ${sum}`;
+    pushHistory(`${label ? label + ": " : ""}${detail}`);
+    onRoll?.({ label: label || "d20", detail, total: sum });
   }
 
   function rollExpr(sides: number, n: number, modifier: number, label?: string) {
@@ -56,7 +66,9 @@ export function DiceTray({
     setResult(String(sum));
     setTone("ok");
     flashDie();
-    pushHistory(`${label ? label + ": " : ""}${n}d${sides}${modStr} [${rolls.join(", ")}] = ${sum}`);
+    const detail = `${n}d${sides}${modStr} [${rolls.join(", ")}] = ${sum}`;
+    pushHistory(`${label ? label + ": " : ""}${detail}`);
+    onRoll?.({ label: label || `d${sides}`, detail, total: sum });
   }
 
   function rollDmg(expr: string, label: string) {
@@ -64,7 +76,9 @@ export function DiceTray({
     setResult(String(total));
     setTone("ok");
     flashDie();
-    pushHistory(`${label ? label + ": " : ""}${expr} ${parts.join(" ")} = ${total}`);
+    const detail = `${expr} ${parts.join(" ")} = ${total}`;
+    pushHistory(`${label ? label + ": " : ""}${detail}`);
+    onRoll?.({ label: label || expr, detail, total });
   }
 
   handleRef.current = {

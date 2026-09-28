@@ -1,7 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'data.sqlite'));
+const db = new Database(process.env.SQLITE_PATH || path.join(__dirname, 'data.sqlite'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -93,6 +93,22 @@ CREATE TABLE IF NOT EXISTS character_versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_character_versions_char ON character_versions(character_id);
+
+-- Announced dice rolls for a session. The roller computes the result in the
+-- browser (same as the local tray) and the server stores what was announced
+-- so the rest of the table, including people who join late, see one log.
+CREATE TABLE IF NOT EXISTS session_rolls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_id INTEGER REFERENCES characters(id) ON DELETE SET NULL,
+  label TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  total INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_rolls_session ON session_rolls(session_id, id);
 `);
 
 module.exports = db;

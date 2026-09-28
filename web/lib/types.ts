@@ -47,6 +47,7 @@ export type CharacterData = {
     prof: number;
     gold: number;
     initOverride?: boolean;
+    conditions?: string;
   };
   abilities: Ability[];
   skills: Skill[];
@@ -103,6 +104,22 @@ export type SessionCharacter = {
   ownerId: number;
   ownerName: string;
   isOwner: boolean;
+  ac: number;
+  hpCur: number;
+  hpMax: number;
+  conditions: string;
+};
+
+export type SessionRoll = {
+  id: number;
+  userId: number;
+  displayName: string;
+  characterId: number | null;
+  characterName: string | null;
+  label: string;
+  detail: string;
+  total: number;
+  createdAt: string;
 };
 
 export type CharacterPayload = {

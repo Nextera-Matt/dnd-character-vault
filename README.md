@@ -120,7 +120,7 @@ Not captured even on a supported sheet: spellcasting details (flagged with a war
 
 - No player-facing password reset (site admin can reset from the admin page)
 - No way for a session admin to demote themselves or transfer admin to someone else
-- No live shared HP / dice across the table (each browser has its own view)
+- Shared table view is live HP, AC, conditions, and a dice log for the session. There is still no initiative tracker or hidden DM rolls
 - Leave-session for players (today a session admin has to remove you)
 
 ## Compendium (spell/item lookup)

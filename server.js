@@ -8,7 +8,8 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const db = require('./db');
 const defaultTemplate = require('./default-template');
-const { mergeCharacterData, parseStoredCharacter } = require('./character-data');
+const { mergeCharacterData, parseStoredCharacter, plainText } = require('./character-data');
+const { subscribe, publish } = require('./session-live');
 
 const app = express();
 // Behind nginx in production — without this, express-rate-limit (and req.ip
@@ -83,6 +84,80 @@ function isSiteAdmin(user) {
 function requireSiteAdmin(req, res, next) {
   if (!isSiteAdmin(req.user)) return res.status(403).json({ error: 'Site admin only.' });
   next();
+}
+
+function tableVitals(data) {
+  const v = data && data.vitals && typeof data.vitals === 'object' ? data.vitals : {};
+  return {
+    ac: Number.isFinite(Number(v.ac)) ? Number(v.ac) : 10,
+    hpCur: Number.isFinite(Number(v.hpCur)) ? Number(v.hpCur) : 0,
+    hpMax: Number.isFinite(Number(v.hpMax)) ? Number(v.hpMax) : 0,
+    conditions: typeof v.conditions === 'string' ? v.conditions : '',
+  };
+}
+
+function publishCharacter(characterId) {
+  const row = db.prepare(`
+    SELECT c.id, c.name, c.data, c.updated_at, c.user_id, c.session_id, u.display_name AS ownerName
+    FROM characters c JOIN users u ON u.id = c.user_id
+    WHERE c.id = ?
+  `).get(characterId);
+  if (!row) return;
+  publish(row.session_id, {
+    type: 'character',
+    character: {
+      id: row.id,
+      name: row.name,
+      updatedAt: row.updated_at,
+      ownerId: row.user_id,
+      ownerName: row.ownerName,
+      ...tableVitals(parseStoredCharacter(row.data, row.id)),
+    },
+  });
+}
+
+function publishCharacterRemoved(sessionId, characterId) {
+  publish(sessionId, { type: 'character-removed', characterId });
+}
+
+const VERSION_SNAPSHOT_MIN_GAP_MINUTES = 10;
+const VERSION_KEEP_MAX = 20;
+
+function maybeSnapshot(characterId, previousData) {
+  const lastVersion = db.prepare(
+    'SELECT saved_at FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT 1'
+  ).get(characterId);
+  const shouldSnapshot = !lastVersion ||
+    (Date.now() - new Date(lastVersion.saved_at + 'Z').getTime()) > VERSION_SNAPSHOT_MIN_GAP_MINUTES * 60 * 1000;
+  if (!shouldSnapshot) return;
+  db.prepare('INSERT INTO character_versions (character_id, data) VALUES (?, ?)').run(characterId, previousData);
+  const excess = db.prepare(
+    'SELECT id FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT -1 OFFSET ?'
+  ).all(characterId, VERSION_KEEP_MAX);
+  excess.forEach(v => db.prepare('DELETE FROM character_versions WHERE id = ?').run(v.id));
+}
+
+// Friend-group dice can come in bursts (advantage, damage, a handful of attacks).
+// Cap announcements per player so a stuck client cannot fill the log.
+const rollWindows = new Map();
+function allowRoll(userId) {
+  const now = Date.now();
+  const recent = (rollWindows.get(userId) || []).filter((t) => now - t < 60_000);
+  if (recent.length >= 60) {
+    rollWindows.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  rollWindows.set(userId, recent);
+  return true;
+}
+
+function boundedInt(value, min, max) {
+  if (typeof value === 'boolean' || value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) return null;
+  return n;
 }
 
 // ---------- Auth ----------
@@ -236,8 +311,10 @@ app.delete('/api/admin/sessions/:id', requireAuth, requireSiteAdmin, (req, res) 
 });
 
 app.delete('/api/admin/characters/:id', requireAuth, requireSiteAdmin, (req, res) => {
-  const info = db.prepare('DELETE FROM characters WHERE id = ?').run(req.params.id);
-  if (info.changes === 0) return res.status(404).json({ error: 'Character not found.' });
+  const row = db.prepare('SELECT id, session_id FROM characters WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Character not found.' });
+  db.prepare('DELETE FROM characters WHERE id = ?').run(row.id);
+  publishCharacterRemoved(row.session_id, row.id);
   res.json({ ok: true });
 });
 
@@ -301,8 +378,10 @@ app.delete('/api/sessions/:id/members/:userId', requireAuth, (req, res) => {
   if (s.created_by !== req.user.id) return res.status(403).json({ error: 'Only the session admin can do that.' });
   const targetId = Number(req.params.userId);
   if (targetId === req.user.id) return res.status(400).json({ error: "Admins can't remove themselves." });
+  const removedCharacters = db.prepare('SELECT id FROM characters WHERE session_id = ? AND user_id = ?').all(s.id, targetId);
   db.prepare('DELETE FROM characters WHERE session_id = ? AND user_id = ?').run(s.id, targetId);
   db.prepare('DELETE FROM session_members WHERE session_id = ? AND user_id = ?').run(s.id, targetId);
+  removedCharacters.forEach((c) => publishCharacterRemoved(s.id, c.id));
   res.json({ ok: true });
 });
 
@@ -332,13 +411,21 @@ app.get('/api/sessions/:id/characters', requireAuth, (req, res) => {
   const sessionId = req.params.id;
   if (!isMember(sessionId, req.user.id)) return res.status(404).json({ error: 'Session not found.' });
   const rows = db.prepare(`
-    SELECT c.id, c.name, c.updated_at AS updatedAt, c.user_id AS ownerId, u.display_name AS ownerName
+    SELECT c.id, c.name, c.data, c.updated_at AS updatedAt, c.user_id AS ownerId, u.display_name AS ownerName
     FROM characters c JOIN users u ON u.id = c.user_id
     WHERE c.session_id = ?
     ORDER BY c.updated_at DESC
   `).all(sessionId);
   res.json({
-    characters: rows.map(r => ({ ...r, isOwner: r.ownerId === req.user.id })),
+    characters: rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      updatedAt: r.updatedAt,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      isOwner: r.ownerId === req.user.id,
+      ...tableVitals(parseStoredCharacter(r.data, r.id)),
+    })),
     limit: MAX_CHARACTERS_PER_SESSION,
     countForYou: rows.filter(r => r.ownerId === req.user.id).length,
   });
@@ -358,6 +445,7 @@ app.post('/api/characters', requireAuth, (req, res) => {
   const data = defaultTemplate();
   const info = db.prepare('INSERT INTO characters (user_id, session_id, name, data) VALUES (?, ?, ?, ?)')
     .run(req.user.id, sessionId, data.charName, JSON.stringify(data));
+  publishCharacter(info.lastInsertRowid);
   res.json({ id: info.lastInsertRowid, data });
 });
 
@@ -376,9 +464,6 @@ app.get('/api/characters/:id', requireAuth, (req, res) => {
     sessionId: row.session_id, sessionName: row.sessionName,
   });
 });
-
-const VERSION_SNAPSHOT_MIN_GAP_MINUTES = 10;
-const VERSION_KEEP_MAX = 20;
 
 app.put('/api/characters/:id', requireAuth, (req, res) => {
   const row = db.prepare('SELECT id, data, updated_at FROM characters WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
@@ -399,23 +484,13 @@ app.put('/api/characters/:id', requireAuth, (req, res) => {
   if (!merged.ok) return res.status(400).json({ error: merged.error });
   const data = merged.data;
 
-  const lastVersion = db.prepare(
-    'SELECT saved_at FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT 1'
-  ).get(req.params.id);
-  const shouldSnapshot = !lastVersion ||
-    (Date.now() - new Date(lastVersion.saved_at + 'Z').getTime()) > VERSION_SNAPSHOT_MIN_GAP_MINUTES * 60 * 1000;
-  if (shouldSnapshot) {
-    db.prepare('INSERT INTO character_versions (character_id, data) VALUES (?, ?)').run(req.params.id, row.data);
-    const excess = db.prepare(
-      'SELECT id FROM character_versions WHERE character_id = ? ORDER BY saved_at DESC LIMIT -1 OFFSET ?'
-    ).all(req.params.id, VERSION_KEEP_MAX);
-    excess.forEach(v => db.prepare('DELETE FROM character_versions WHERE id = ?').run(v.id));
-  }
+  maybeSnapshot(req.params.id, row.data);
 
   const name = (data.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
     .run(JSON.stringify(data), name, req.params.id);
   const updated = db.prepare('SELECT updated_at FROM characters WHERE id = ?').get(req.params.id);
+  publishCharacter(req.params.id);
   res.json({ ok: true, updatedAt: updated.updated_at });
 });
 
@@ -448,6 +523,7 @@ app.post('/api/characters/:id/versions/:versionId/restore', requireAuth, (req, r
   const name = (restoredData.charName || 'Unnamed').slice(0, 80);
   db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
     .run(JSON.stringify(restoredData), name, req.params.id);
+  publishCharacter(req.params.id);
   res.json({ ok: true, data: restoredData });
 });
 
@@ -473,6 +549,8 @@ app.put('/api/characters/:id/move', requireAuth, (req, res) => {
 
   db.prepare("UPDATE characters SET session_id = ?, updated_at = datetime('now') WHERE id = ?")
     .run(targetSessionId, req.params.id);
+  publishCharacterRemoved(row.session_id, row.id);
+  publishCharacter(row.id);
   res.json({ ok: true });
 });
 
@@ -483,7 +561,149 @@ app.delete('/api/characters/:id', requireAuth, (req, res) => {
   const admin = isSessionAdmin(row.session_id, req.user.id);
   if (!owner && !admin) return res.status(403).json({ error: 'Not yours to delete.' });
   db.prepare('DELETE FROM characters WHERE id = ?').run(req.params.id);
+  publishCharacterRemoved(row.session_id, row.id);
   res.json({ ok: true });
+});
+
+// Combat updates from the table. Owner-only, and only the fields the table
+// shows, so a damage click does not rewrite spells or backstory.
+app.patch('/api/characters/:id/vitals', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT id, data, updated_at, user_id FROM characters WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!row) return res.status(404).json({ error: 'Character not found, or not yours to edit.' });
+
+  const ifMatch = req.get('If-Match');
+  if (!ifMatch) return res.status(400).json({ error: 'If-Match required.' });
+  if (ifMatch !== row.updated_at) {
+    return res.status(409).json({
+      error: 'Character was saved elsewhere. Reload to continue.',
+      updatedAt: row.updated_at,
+    });
+  }
+
+  const body = req.body || {};
+  const hasHp = Object.prototype.hasOwnProperty.call(body, 'hpCur');
+  const hasMax = Object.prototype.hasOwnProperty.call(body, 'hpMax');
+  const hasAc = Object.prototype.hasOwnProperty.call(body, 'ac');
+  const hasConditions = Object.prototype.hasOwnProperty.call(body, 'conditions');
+  if (!hasHp && !hasMax && !hasAc && !hasConditions) {
+    return res.status(400).json({ error: 'No vitals to update.' });
+  }
+
+  const existing = parseStoredCharacter(row.data, row.id);
+  if (!existing) return res.status(500).json({ error: 'Character data could not be read.' });
+
+  const next = {
+    hpCur: hasHp ? boundedInt(body.hpCur, -999, 9999) : existing.vitals.hpCur,
+    hpMax: hasMax ? boundedInt(body.hpMax, 0, 9999) : existing.vitals.hpMax,
+    ac: hasAc ? boundedInt(body.ac, 0, 99) : existing.vitals.ac,
+  };
+  if (next.hpCur === null || next.hpMax === null || next.ac === null) {
+    return res.status(400).json({ error: 'Vitals must be whole numbers in range.' });
+  }
+  if (hasConditions && typeof body.conditions !== 'string') {
+    return res.status(400).json({ error: 'Conditions must be text.' });
+  }
+
+  existing.vitals.hpCur = next.hpCur;
+  existing.vitals.hpMax = next.hpMax;
+  existing.vitals.ac = next.ac;
+  if (hasConditions) existing.vitals.conditions = plainText(body.conditions, 80);
+
+  const merged = mergeCharacterData(existing, existing);
+  if (!merged.ok) return res.status(400).json({ error: merged.error });
+
+  maybeSnapshot(row.id, row.data);
+  const name = (merged.data.charName || 'Unnamed').slice(0, 80);
+  db.prepare("UPDATE characters SET data = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(JSON.stringify(merged.data), name, row.id);
+  const updated = db.prepare('SELECT updated_at FROM characters WHERE id = ?').get(row.id);
+  publishCharacter(row.id);
+  res.json({
+    ok: true,
+    updatedAt: updated.updated_at,
+    ...tableVitals(merged.data),
+  });
+});
+
+app.get('/api/sessions/:id/rolls', requireAuth, (req, res) => {
+  const sessionId = req.params.id;
+  if (!isMember(sessionId, req.user.id)) return res.status(404).json({ error: 'Session not found.' });
+  const rolls = db.prepare(`
+    SELECT r.id, r.user_id AS userId, u.display_name AS displayName,
+      r.character_id AS characterId, c.name AS characterName,
+      r.label, r.detail, r.total, r.created_at AS createdAt
+    FROM session_rolls r
+    JOIN users u ON u.id = r.user_id
+    LEFT JOIN characters c ON c.id = r.character_id
+    WHERE r.session_id = ?
+    ORDER BY r.id DESC
+    LIMIT 40
+  `).all(sessionId);
+  res.json({ rolls });
+});
+
+app.post('/api/sessions/:id/rolls', requireAuth, (req, res) => {
+  const sessionId = req.params.id;
+  if (!isMember(sessionId, req.user.id)) return res.status(404).json({ error: 'Session not found.' });
+  if (!allowRoll(req.user.id)) return res.status(429).json({ error: 'Too many rolls. Wait a moment.' });
+
+  const body = req.body || {};
+  const label = plainText(typeof body.label === 'string' ? body.label : '', 80) || 'Roll';
+  const detail = plainText(typeof body.detail === 'string' ? body.detail : '', 240);
+  const total = boundedInt(body.total, -9999, 9999);
+  if (total === null) return res.status(400).json({ error: 'Invalid roll total.' });
+
+  let characterId = null;
+  if (body.characterId !== undefined && body.characterId !== null && body.characterId !== '') {
+    const character = db.prepare('SELECT id, user_id FROM characters WHERE id = ? AND session_id = ?')
+      .get(body.characterId, sessionId);
+    if (!character || character.user_id !== req.user.id) {
+      return res.status(400).json({ error: 'That character is not yours in this session.' });
+    }
+    characterId = character.id;
+  }
+
+  const info = db.prepare(
+    'INSERT INTO session_rolls (session_id, user_id, character_id, label, detail, total) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(sessionId, req.user.id, characterId, label, detail, total);
+
+  const roll = db.prepare(`
+    SELECT r.id, r.user_id AS userId, u.display_name AS displayName,
+      r.character_id AS characterId, c.name AS characterName,
+      r.label, r.detail, r.total, r.created_at AS createdAt
+    FROM session_rolls r
+    JOIN users u ON u.id = r.user_id
+    LEFT JOIN characters c ON c.id = r.character_id
+    WHERE r.id = ?
+  `).get(info.lastInsertRowid);
+
+  publish(sessionId, { type: 'roll', roll });
+  res.json({ roll });
+});
+
+app.get('/api/sessions/:id/events', requireAuth, (req, res) => {
+  const sessionId = req.params.id;
+  if (!isMember(sessionId, req.user.id)) return res.status(404).json({ error: 'Session not found.' });
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  // Node's default request timeout would otherwise close a quiet table stream.
+  if (req.socket) req.socket.setTimeout(0);
+  res.write(`event: ready\ndata: ${JSON.stringify({ type: 'ready' })}\n\n`);
+
+  const unsubscribe = subscribe(sessionId, res);
+  const ping = setInterval(() => {
+    res.write(': ping\n\n');
+  }, 25000);
+  req.on('close', () => {
+    clearInterval(ping);
+    unsubscribe();
+  });
 });
 
 // ---------- Static frontend ----------
