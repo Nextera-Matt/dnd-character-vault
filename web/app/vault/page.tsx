@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MotionPage, Rise, Stagger } from "@/components/Motion";
+import { MotionPage, Rise, Stagger, TiltCard } from "@/components/Motion";
 import { TopBar } from "@/components/TopBar";
 import { ApiError, api, utcStamp } from "@/lib/api";
 import type { MeUser, SessionSummary, VaultCharacter } from "@/lib/types";
@@ -85,6 +85,7 @@ export default function VaultPage() {
         <Stagger className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
           {sessions.map((s) => (
             <Rise key={s.id}>
+              <TiltCard>
               <article className="surface p-5 min-h-[120px] flex flex-col gap-2">
                 <h3 className="font-[family-name:var(--font-cinzel)] text-[var(--gold)] text-[1.05rem]">{s.name}</h3>
                 <div className="font-[family-name:var(--font-mono)] text-[0.7rem] uppercase text-[var(--gold-dim)]">
@@ -98,6 +99,7 @@ export default function VaultPage() {
                   Open
                 </button>
               </article>
+              </TiltCard>
             </Rise>
           ))}
           <Rise>
@@ -150,6 +152,7 @@ export default function VaultPage() {
           <Stagger className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
             {characters.map((c) => (
               <Rise key={c.id}>
+                <TiltCard>
                 <article className="surface p-5 min-h-[120px] flex flex-col gap-2">
                   <h3 className="font-[family-name:var(--font-cinzel)] text-[var(--gold)] text-[1.05rem]">{c.name}</h3>
                   <div className="font-[family-name:var(--font-mono)] text-[0.7rem] uppercase text-[var(--gold-dim)]">
@@ -165,6 +168,7 @@ export default function VaultPage() {
                     </button>
                   </div>
                 </article>
+                </TiltCard>
               </Rise>
             ))}
           </Stagger>

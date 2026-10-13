@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { MotionPage, Rise, Stagger } from "@/components/Motion";
+import { MotionPage, Rise, Stagger, TiltCard } from "@/components/Motion";
 import { TopBar } from "@/components/TopBar";
 import { ApiError, api, utcStamp } from "@/lib/api";
 import type { MeUser, SessionCharacter, SessionDetail, SessionRoll } from "@/lib/types";
@@ -239,6 +239,7 @@ function SessionInner() {
               const ratio = c.hpMax > 0 ? Math.min(1, Math.max(0, c.hpCur / c.hpMax)) : 0;
               return (
                 <Rise key={c.id}>
+                  <TiltCard>
                   <article className="surface p-5 min-h-[180px] flex flex-col gap-2">
                     <h3 className="font-[family-name:var(--font-cinzel)] text-[var(--gold)]">{c.name}</h3>
                     <div className="font-[family-name:var(--font-mono)] text-[0.7rem] text-[var(--veil)]">
@@ -289,6 +290,7 @@ function SessionInner() {
                       ) : null}
                     </div>
                   </article>
+                  </TiltCard>
                 </Rise>
               );
             })}

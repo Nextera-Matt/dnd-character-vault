@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Cinzel, EB_Garamond, JetBrains_Mono } from "next/font/google";
 import { AmbientLayer } from "@/components/AmbientLayer";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { WeavefieldLazy } from "@/components/WeavefieldLazy";
+import { AttuneBoot, SessionHud } from "@/components/Hud";
+import { ScrollProgress } from "@/components/Motion";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -41,7 +44,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <AmbientLayer />
+          <WeavefieldLazy />
+          <ScrollProgress />
           <div className="page-shell">{children}</div>
+          <SessionHud />
+          <AttuneBoot />
         </ThemeProvider>
       </body>
     </html>

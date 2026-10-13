@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { parseDamage, rollDie } from "@/lib/sheet";
+import { dispatchRollImpulse } from "@/lib/weave";
 
 export type RollMode = "normal" | "adv" | "dis";
 
@@ -57,6 +58,11 @@ export function DiceTray({
     const detail = `d20${modeTag}${modStr} ${rollsDisplay} = ${sum}`;
     pushHistory(`${label ? label + ": " : ""}${detail}`);
     onRoll?.({ label: label || "d20", detail, total: sum });
+    dispatchRollImpulse({
+      kind: picked === 20 ? "crit" : picked === 1 ? "fumble" : "normal",
+      label: label || "d20",
+      total: sum,
+    });
   }
 
   function rollExpr(sides: number, n: number, modifier: number, label?: string) {
@@ -69,6 +75,7 @@ export function DiceTray({
     const detail = `${n}d${sides}${modStr} [${rolls.join(", ")}] = ${sum}`;
     pushHistory(`${label ? label + ": " : ""}${detail}`);
     onRoll?.({ label: label || `d${sides}`, detail, total: sum });
+    dispatchRollImpulse({ kind: "normal", label: label || `d${sides}`, total: sum });
   }
 
   function rollDmg(expr: string, label: string) {
@@ -79,6 +86,7 @@ export function DiceTray({
     const detail = `${expr} ${parts.join(" ")} = ${total}`;
     pushHistory(`${label ? label + ": " : ""}${detail}`);
     onRoll?.({ label: label || expr, detail, total });
+    dispatchRollImpulse({ kind: "normal", label: label || expr, total });
   }
 
   handleRef.current = {
